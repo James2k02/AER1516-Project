@@ -195,11 +195,8 @@ Details:
     - RobotDynamics interface/base class
     - Methods dynamics module must provide:
         * move_cost(state1, state2) -> float
-        * can_hop_over(obstacle, state1, state2) -> bool
-        * trajectory(state1, state2, num_points) -> list of states
-        * obstacle_position_at_time(obstacle_id, t) -> (x, y, w, h)
+        * trajectory(state1, state2, step_size) -> State
         * get_max_speed() -> float
-        * get_hop_speed() -> float
     - Placeholder implementation for now (linear interpolation, constant speed)
     - Path planning passes dynamics_model to collision checking and steering
 Examples of what to implement:
@@ -207,157 +204,17 @@ Examples of what to implement:
     - Placeholder implementations
     - Integration points: steer(), collision_check(), edge_cost()
 
-
-The 9 main TODOs form a dependency chain:
-    1. State representation (needed by everything)
-    2. Random sampling (step 1 of main loop)
-    3. Nearest neighbor (step 2 of main loop)
-    4. Steering (step 3, uses state representation)
-    5. Collision checking (step 4, uses obstacle data from map/dynamics)
-    6. Tree data structure (needed to store nodes)
-    7. Edge cost (needed for optional RRT* and evaluation)
-    8. Goal detection (needed for termination)
-    9. Path extraction (needed for output)
-    10. Main loop (orchestrates 1-9)
-    11. Dynamic obstacle integration (plugs into 4 and 5)
-
-Suggested implementation order:
-    Phase 1 (Core RRT): 1, 6, 2, 3, 4, 5, 8, 9, 10
-    Phase 2 (Optimization): 7, 11 (RRT* features)
-    Phase 3 (Dynamics): 12 (integrate with dynamics team)
-
-KEY PARAMETERS TO TUNE
 ================================================================================
-
-- step_size: How far to extend tree per iteration (grid units)
-- p_goal: Probability of sampling goal directly vs. random (0.05 = 5%)
-- max_iterations: Number of planning iterations
-- max_time: Time budget for planning (seconds)
-- goal_threshold: Distance threshold to consider goal reached (units)
-- robot_radius: Robot footprint for collision checking (if not point robot)
-
 """
 
-import numpy as np
-from collections import namedtuple
 from typing import List, Tuple, Optional
 import math
 import time
+import random
 
-# TODO: Import map/environment definitions from your map module
+from dynamics import State
+
 # TODO: Import dynamics definitions from your dynamics module
-
-# ============================================================================
-# TODO 1: STATE REPRESENTATION
-# ============================================================================
-
-# Placeholder: Define your state representation here
-State = namedtuple('State', ['x', 'y', 'theta'])
-
-
-def state_distance(s1: State, s2: State) -> float:
-    """Euclidean distance between two states (ignoring theta for now)"""
-    return math.sqrt((s1.x - s2.x)**2 + (s1.y - s2.y)**2)
-
-
-# ============================================================================
-# TODO 2: RANDOM SAMPLING
-# ============================================================================
-
-def sample_random_config(map_bounds: Tuple, p_goal: float = 0.05) -> State:
-    """
-    Sample a random configuration.
-    With probability p_goal, return the goal. Otherwise, sample uniformly.
-    """
-    # TODO: Implement
-    pass
-
-
-# ============================================================================
-# TODO 3: NEAREST NEIGHBOR SEARCH
-# ============================================================================
-
-def nearest_node(tree: List[State], config: State) -> Optional[State]:
-    """
-    Find the nearest node in the tree to the given configuration.
-    """
-    # TODO: Implement
-    pass
-
-
-# ============================================================================
-# TODO 4: STEERING / LOCAL EDGE INTERPOLATION
-# ============================================================================
-
-def steer(start: State, target: State, step_size: float, dynamics_model) -> Optional[State]:
-    """
-    Steer from start toward target, moving at most step_size distance.
-    Uses dynamics model for robot-specific behavior.
-    """
-    # TODO: Implement
-    pass
-
-
-# ============================================================================
-# TODO 5: COLLISION CHECKING
-# ============================================================================
-
-def is_collision_free(start: State, end: State, static_obstacles, 
-                      dynamic_obstacles, dynamics_model, t_start: float = 0.0) -> bool:
-    """
-    Check if path from start to end is collision-free.
-    Accounts for static obstacles and dynamic obstacles.
-    """
-    # TODO: Implement
-    pass
-
-
-# ============================================================================
-# TODO 6: EDGE COST COMPUTATION
-# ============================================================================
-
-def edge_cost(s1: State, s2: State, dynamics_model) -> float:
-    """
-    Compute cost (time/distance) to traverse from s1 to s2.
-    """
-    # TODO: Implement
-    pass
-
-
-# ============================================================================
-# TODO 7: REWIRING (RRT* - FUTURE)
-# ============================================================================
-
-def rewire_neighbors(tree, new_node, radius: float):
-    """
-    RRT* rewiring: optimize tree by rerouting through cheaper paths.
-    """
-    # TODO: Implement (for RRT* enhancement)
-    pass
-
-
-# ============================================================================
-# TODO 8: GOAL DETECTION & TERMINATION
-# ============================================================================
-
-def is_goal_reached(node: State, goal: State, threshold: float) -> bool:
-    """
-    Check if node is within threshold distance of goal.
-    """
-    # TODO: Implement
-    pass
-
-
-# ============================================================================
-# TODO 9: PATH EXTRACTION & RECONSTRUCTION
-# ============================================================================
-
-def extract_path(tree_node, goal_node) -> List[State]:
-    """
-    Backtrack from goal_node to root, extracting the path.
-    """
-    # TODO: Implement
-    pass
 
 
 # ============================================================================
@@ -366,14 +223,292 @@ def extract_path(tree_node, goal_node) -> List[State]:
 
 class TreeNode:
     """Represents a single node in the RRT tree."""
-    # TODO: Implement
-    pass
+    
+    def __init__(self, state: State, parent=None, cost: float = 0.0):
+        """
+        Args:
+            state: Configuration at this node
+            parent: Parent node in tree
+            cost: Cost from start to this node (cumulative)
+        """
+        self.state = state
+        self.parent = parent
+        self.cost = cost  # Total cost from start to here
+        self.children = []
+    
+    def __repr__(self):
+        return f"TreeNode(state={self.state}, cost={self.cost:.2f})"
 
 
 class RRTTree:
     """Manages the RRT tree structure."""
-    # TODO: Implement
+    
+    def __init__(self, start: State):
+        """
+        Args:
+            start: Root node configuration
+        """
+        self.root = TreeNode(start, parent=None, cost=0.0)
+        self.nodes = [self.root]
+    
+    def add_node(self, state: State, parent: TreeNode, cost: float) -> TreeNode:
+        """
+        Add a new node to the tree.
+        
+        Args:
+            state: New node configuration
+            parent: Parent node
+            cost: Cost from start to this new node
+        
+        Returns:
+            The newly created node
+        """
+        new_node = TreeNode(state, parent=parent, cost=cost)
+        parent.children.append(new_node)
+        self.nodes.append(new_node)
+        return new_node
+    
+    def size(self) -> int:
+        """Return number of nodes in tree."""
+        return len(self.nodes)
+    
+    def get_nearest_node(self, state: State) -> TreeNode:
+        """
+        Find nearest node to given state.
+        
+        Args:
+            state: Query state
+        
+        Returns:
+            Nearest node in tree
+        """
+        nearest = self.root
+        min_dist = State.state_distance(state, nearest.state)
+        
+        for node in self.nodes[1:]:
+            dist = State.state_distance(state, node.state)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = node
+        
+        return nearest
+    
+    def get_neighbors_in_radius(self, state: State, radius: float) -> List[TreeNode]:
+        """
+        Find all nodes within radius of given state.
+        
+        Args:
+            state: Query state
+            radius: Search radius
+        
+        Returns:
+            List of nodes within radius
+        """
+        neighbors = []
+        for node in self.nodes:
+            if State.state_distance(state, node.state) <= radius:
+                neighbors.append(node)
+        return neighbors
+
+
+# ============================================================================
+# TODO 2: RANDOM SAMPLING
+# ============================================================================
+
+def sample_random_state(map_bounds: Tuple, goal: State = None, 
+                         p_goal: float = 0.05) -> State:
+    """
+    Sample a random configuration.
+    With probability p_goal, return the goal. Otherwise, sample uniformly.
+    
+    Args:
+        map_bounds: Tuple of (x_min, x_max, y_min, y_max)
+        goal: Goal state (if None, never sample goal)
+        p_goal: Probability of sampling goal directly
+    
+    Returns:
+        Randomly sampled state
+    """
+    if goal is not None and random.random() < p_goal:
+        return goal
+    
+    # Random uniform in map bounds
+    x = random.uniform(map_bounds[0], map_bounds[1])
+    y = random.uniform(map_bounds[2], map_bounds[3])
+    theta = random.uniform(0, 2 * math.pi)
+    return State(x, y, theta)
+
+
+# ============================================================================
+# TODO 3: NEAREST NEIGHBOR SEARCH
+# ============================================================================
+
+def nearest_node(tree: RRTTree, config: State) -> TreeNode:
+    """
+    Find the nearest node in the tree to the given configuration.
+    
+    Args:
+        tree: RRT tree
+        config: Query configuration
+    
+    Returns:
+        Nearest TreeNode
+    """
+    return tree.get_nearest_node(config)
+
+
+# ============================================================================
+# TODO 4: STEERING / LOCAL EDGE INTERPOLATION
+# ============================================================================
+
+def steer(start: State, target: State, step_size: float, 
+          dynamics_model) -> Optional[State]:
+    """
+    Steer from start toward target, moving at most step_size distance.
+    Uses dynamics model for robot-specific behavior.
+    
+    Args:
+        start: Starting state
+        target: Target state to steer toward
+        step_size: Maximum distance to travel
+        dynamics_model: Robot dynamics (has trajectory() method)
+    
+    Returns:
+        New state after steering, or None if steering fails
+    """
+    # TODO: Implement steering logic
+    # For now, use dynamics model's trajectory method
+    if dynamics_model is not None:
+        return dynamics_model.trajectory(start, target, step_size)
+    else:
+        # Fallback: simple straight-line steering
+        distance = start.distance_to(target)
+        if distance < 1e-6:
+            return start
+        
+        # Unit direction vector
+        dx = (target.x - start.x) / distance
+        dy = (target.y - start.y) / distance
+        
+        # Move step_size in that direction
+        new_x = start.x + step_size * dx
+        new_y = start.y + step_size * dy
+        new_theta = math.atan2(dy, dx)
+        
+        return State(new_x, new_y, new_theta)
+
+
+# ============================================================================
+# TODO 5: COLLISION CHECKING
+# ============================================================================
+
+def is_collision_free(start: State, end: State, static_obstacles, 
+                      dynamics_model=None, t_start: float = 0.0) -> bool:
+    """
+    Check if path from start to end is collision-free.
+    Accounts for static obstacles and optionally dynamic obstacles.
+    
+    Args:
+        start: Starting state
+        end: Ending state
+        static_obstacles: List of static obstacles (rectangles)
+        dynamics_model: Robot dynamics (optional, for dynamic obstacles)
+        t_start: Starting time for collision check
+    
+    Returns:
+        True if path is collision-free, False otherwise
+    """
+    # TODO: Implement collision checking
+    # For now, assume collision-free
+    return True
+
+
+# ============================================================================
+# TODO 6: EDGE COST COMPUTATION
+# ============================================================================
+
+def edge_cost(s1: State, s2: State, dynamics_model=None) -> float:
+    """
+    Compute cost (time/distance) to traverse from s1 to s2.
+    
+    Args:
+        s1: Starting state
+        s2: Ending state
+        dynamics_model: Robot dynamics (optional, for speed-based costs)
+    
+    Returns:
+        Cost value
+    """
+    # TODO: Implement cost computation
+    # For now, use Euclidean distance
+    if dynamics_model is not None:
+        return dynamics_model.move_cost(s1, s2)
+    else:
+        return State.state_distance(s1, s2)
+
+
+# ============================================================================
+# TODO 7: REWIRING (RRT* - FUTURE)
+# ============================================================================
+
+def rewire_neighbors(tree: RRTTree, new_node: TreeNode, radius: float, 
+                     dynamics_model=None):
+    """
+    RRT* rewiring: optimize tree by rerouting through cheaper paths.
+    
+    Args:
+        tree: RRT tree
+        new_node: Newly added node to rewire around
+        radius: Search radius for neighbors
+        dynamics_model: Robot dynamics (for cost computation)
+    """
+    # TODO: Implement RRT* rewiring
     pass
+
+
+# ============================================================================
+# TODO 8: GOAL DETECTION & TERMINATION
+# ============================================================================
+
+def is_goal_reached(node_state: State, goal: State, threshold: float) -> bool:
+    """
+    Check if node is within threshold distance of goal.
+    
+    Args:
+        node_state: Node state to check
+        goal: Goal state
+        threshold: Distance threshold
+    
+    Returns:
+        True if node is close enough to goal
+    """
+    return State.state_distance(node_state, goal) < threshold
+
+
+# ============================================================================
+# TODO 9: PATH EXTRACTION & RECONSTRUCTION
+# ============================================================================
+
+def extract_path(goal_node: TreeNode) -> List[State]:
+    """
+    Extract path by backtracking from goal node to root.
+    
+    Args:
+        goal_node: Goal TreeNode to extract path from
+    
+    Returns:
+        Path as list of states from start to goal
+    """
+    path = []
+    node = goal_node
+    
+    while node is not None:
+        path.append(node.state)
+        node = node.parent
+    
+    path.reverse()
+    return path
+
 
 # ============================================================================
 # TODO 10: MAIN RRT PLANNING LOOP
@@ -381,42 +516,105 @@ class RRTTree:
 
 def plan_rrt(start: State, goal: State, map_info, dynamics_model, 
              max_iterations: int = 5000, max_time: float = 10.0, 
-             step_size: float = 1.0, goal_threshold: float = 0.5) -> Optional[List[State]]:
+             step_size: float = 1.0, goal_threshold: float = 0.5,
+             p_goal_bias: float = 0.05) -> Optional[List[State]]:
     """
     Main RRT planning function.
     
     Args:
         start: Starting configuration
         goal: Goal configuration
-        map_info: Map with static obstacles and bounds
+        map_info: Map with obstacles and bounds
+            Required keys: 'bounds' (x_min, x_max, y_min, y_max), 'obstacles'
         dynamics_model: Robot dynamics (pluggable)
         max_iterations: Maximum planning iterations
         max_time: Time budget (seconds)
         step_size: Maximum extension distance per iteration
         goal_threshold: Distance threshold to consider goal reached
+        p_goal_bias: Probability of sampling goal directly (0.0 to 1.0)
     
     Returns:
         Path as list of states, or None if no path found
     """
-    # TODO: Implement main loop
-    # 1. Initialize tree
-    # 2. For each iteration:
-    #    a. Sample random config
-    #    b. Find nearest node
-    #    c. Steer toward sample
-    #    d. Collision check
-    #    e. Add to tree if collision-free
-    #    f. Check goal
-    #    g. [RRT*] Rewire neighbors
-    # 3. Extract and return path
-    pass
+    start_time = time.time()
+    iterations = 0
+    tree = RRTTree(start)
+    
+    # Extract map info
+    map_bounds = map_info.get('bounds', (0, 100, 0, 100))
+    static_obstacles = map_info.get('obstacles', [])
+    
+    while iterations < max_iterations:
+        # Check time budget
+        if time.time() - start_time > max_time:
+            break
+        
+        # 1. Sample random config
+        q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
+        
+        # 2. Find nearest node
+        q_nearest_node = nearest_node(tree, q_rand)
+        
+        # 3. Steer toward sample
+        q_new = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
+        
+        if q_new is None:
+            iterations += 1
+            continue
+        
+        # 4. Collision check
+        if is_collision_free(q_nearest_node.state, q_new, static_obstacles, 
+                            dynamics_model):
+            # 5. Add to tree
+            new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, 
+                                                       dynamics_model)
+            new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
+            
+            # 6. Check goal
+            if is_goal_reached(q_new, goal, goal_threshold):
+                path = extract_path(new_node)
+                planning_time = time.time() - start_time
+                print(f"Path found in {planning_time:.2f}s, {iterations} iterations, "
+                      f"path length: {len(path)}")
+                return path
+        
+        iterations += 1
+    
+    # No path found
+    planning_time = time.time() - start_time
+    print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
+    return None
 
 
 # ============================================================================
+# EXAMPLE USAGE
+# ============================================================================
 
 # if __name__ == "__main__":
-#     # TODO: Set up map, obstacles, start/goal positions
-#     # TODO: Instantiate dynamics model
-#     # TODO: Call plan_rrt()
-#     # TODO: Visualize result
-#     pass
+    # print("=" * 70)
+    # print("RRT PLANNER EXAMPLE")
+    # print("=" * 70)
+    
+    # # Setup map info
+    # map_info = {
+    #     'bounds': (0, 100, 0, 100),
+    #     'obstacles': [],
+    # }
+    
+    # # Setup start and goal
+    # start = State(10, 10, 0)
+    # goal = State(90, 90, 0)
+    
+    # print(f"\nStart: {start}")
+    # print(f"Goal: {goal}")
+    
+    # # Plan without dynamics (fallback steering)
+    # path = plan_rrt(start, goal, map_info, dynamics_model=None, 
+    #                max_iterations=1000, max_time=5.0, step_size=2.0)
+    
+    # if path:
+    #     print(f"\nFound path with {len(path)} waypoints:")
+    #     for i, state in enumerate(path):
+    #         print(f"  {i}: {state}")
+    # else:
+    #     print("\nNo path found")

@@ -78,3 +78,12 @@ class RobotDynamics:
         """Return speed when hopping over obstacles."""
         # TODO: Implement
         pass
+
+class jumping_turtle_dynamics(RobotDynamics):
+    """ To be implemented"""
+
+class rurtle_dynamics(RobotDynamics):
+    """ To be implemented"""
+
+class LIMP_dynamics(RobotDynamics):
+    """ maybe? two legged dynamics"""
