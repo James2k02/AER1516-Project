@@ -7,7 +7,11 @@ It uses matplotlib to display the grid, with obstacles shown in black, free spac
 import matplotlib.pyplot as plt
 from maps import get_map
 
-grid, start, goal, meta = get_map("map5")
+m = get_map("map5")
+grid = m.grid
+start = m.start
+goal = m.goal
+name = m.name
 
 plt.imshow(1 - grid, cmap = 'gray', origin = 'upper')
 
@@ -17,6 +21,6 @@ plt.scatter(start[1], start[0], c = 'green', s = 100, label = 'Start')
 # plot goal (red)
 plt.scatter(goal[1], goal[0], c = 'red', s = 100, label = 'Goal')
 
-plt.title(meta["name"])
+plt.title(name)
 plt.legend()
 plt.show()

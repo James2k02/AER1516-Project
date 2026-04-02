@@ -7,47 +7,9 @@ It will also handle the visualization of the maps and the paths found by the alg
 import matplotlib.pyplot as plt
 from maps import get_map
 
-# So far, this will just be the animation for maps 4 and 5 (dynamic maps) and later will add the whole pipeline
-
 # =========================
-# Update dynamic obstacles
+# Checking if a position is valid for the obstacle to move into (no walls, within bounds)
 # =========================
-# def update_obstacles(obstacles, grid):
-#     for obs in obstacles:
-#         r, c = obs["pos"]
-#         vr, vc = obs["vel"]
-#         size = obs["size"]
-
-#         # move
-#         r_new = r + vr
-#         c_new = c + vc
-
-#         # =========================
-#         # VERTICAL (UP/DOWN)
-#         # =========================
-#         if r_new < 1:
-#             r_new = 1
-#             vr *= -1
-
-#         elif r_new > grid.shape[0] - size - 1:
-#             r_new = grid.shape[0] - size - 1
-#             vr *= -1
-
-#         # =========================
-#         # HORIZONTAL (LEFT/RIGHT)
-#         # =========================
-#         if c_new < 1:
-#             c_new = 1
-#             vc *= -1
-
-#         elif c_new > grid.shape[1] - size - 1:
-#             c_new = grid.shape[1] - size - 1
-#             vc *= -1
-
-#         # update
-#         obs["pos"] = [r_new, c_new]
-#         obs["vel"] = [vr, vc]
-
 def is_valid_position(grid, r, c, size):
     for i in range(size):
         for j in range(size):
@@ -64,6 +26,9 @@ def is_valid_position(grid, r, c, size):
 
     return True
 
+# =========================
+# Update dynamic obstacles
+# =========================
 def update_obstacles(obstacles, grid):
     for obs in obstacles:
         r, c = obs["pos"]
@@ -88,31 +53,35 @@ def update_obstacles(obstacles, grid):
 # =========================
 def run_simulation(map_name):
     # load map
-    grid, start, goal, meta = get_map(map_name)
+    m = get_map(map_name)
+    grid = m.grid
+    start = m.start
+    goal = m.goal
+    name = m.name
 
     # =========================
     # Define dynamic obstacles
     # =========================
     if map_name == "map4":
         dynamic_obstacles = [
-            {"pos": [6, 2], "size": 2, "vel": [0, 1]},   # top block
-            {"pos": [14, 5], "size": 2, "vel": [0, -1]}  # bottom block
+            {"pos": [6, 2], "size": 2, "vel": [0, 1]},   # horizontal
+            {"pos": [14, 5], "size": 2, "vel": [0, -1]}  # horizontal
         ]
 
     elif map_name == "map5":
         dynamic_obstacles = [
             {"pos": [5, 1], "size": 2, "vel": [1, 0]},    # vertical
             {"pos": [15, 9], "size": 2, "vel": [-1, 0]},  # vertical
-            {"pos": [10, 11], "size": 2, "vel": [0, 1]},   # horizontal
+            {"pos": [10, 11], "size": 2, "vel": [0, 1]},  # horizontal
             {"pos": [7, 14], "size": 2, "vel": [0, -1]},  # horizontal
             {"pos": [12, 12], "size": 2, "vel": [1, 0]},  # vertical
         ]
 
     else:
         dynamic_obstacles = []
-               
+
     # =========================
-    # Visualization loop
+    # Visualization setup
     # =========================
     plt.ion()
     fig, ax = plt.subplots()
@@ -120,43 +89,56 @@ def run_simulation(map_name):
     while True:
         ax.clear()
 
-        # draw map (white = free, black = obstacles)
-        ax.imshow(1 - grid, cmap='gray', origin='upper')
-
-        # update dynamic obstacles
+        # =========================
+        # 1. update dynamic obstacles
+        # =========================
         update_obstacles(dynamic_obstacles, grid)
 
-        # draw dynamic obstacles
+        # =========================
+        # 2. create temp grid
+        # =========================
+        temp_grid = grid.copy()
+
+        # =========================
+        # 3. stamp dynamic obstacles onto grid
+        # =========================
         for obs in dynamic_obstacles:
             r, c = obs["pos"]
             size = obs["size"]
 
-        # draw square block
             for i in range(size):
                 for j in range(size):
-                    ax.scatter(c + j, r + i, c='blue', s=120)
+                    temp_grid[r + i, c + j] = 1
 
-        # draw start and goal
+        # =========================
+        # 4. draw map (ALL obstacles = black)
+        # =========================
+        ax.imshow(1 - temp_grid, cmap='gray', origin='upper')
+
+        # =========================
+        # 5. draw start + goal
+        # =========================
         ax.scatter(start[1], start[0], c='green', s=120, label='Start')
         ax.scatter(goal[1], goal[0], c='red', s=120, label='Goal')
 
-        # title
-        ax.set_title(meta["name"])
-
-        # remove axis ticks for cleaner look
+        # =========================
+        # 6. formatting
+        # =========================
+        ax.set_title(name)
         ax.set_xticks([])
         ax.set_yticks([])
 
-        # avoid duplicate legend entries
+        # clean legend
         handles, labels = ax.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         ax.legend(by_label.values(), by_label.keys())
 
         plt.pause(0.2)
-        
+
+
 # =========================
 # RUN HERE
 # =========================
 if __name__ == "__main__":
     # choose map: "map4" or "map5"
-    run_simulation("map5")
+    run_simulation("map4")

@@ -7,6 +7,16 @@ The maps can be easily modified or extended by changing the grid layout and obst
 import numpy as np
 
 # =========================
+# Map class
+# =========================
+class Map:
+    def __init__(self, grid, start, goal, name):
+        self.grid = grid
+        self.start = start
+        self.goal = goal
+        self.name = name
+
+# =========================
 # Helper: add walls
 # =========================
 def add_boundaries(grid):
@@ -30,7 +40,7 @@ def simple():
     start = (1, 1)
     goal = (18, 8)
 
-    return grid, start, goal, {"name": "Simple Map"}
+    return Map(grid, start, goal, "Simple Map")
 
 # =========================
 # Map 2: Static Map (narrow passage)
@@ -57,7 +67,7 @@ def narrow_passage():
     start = (2, 2)
     goal = (17, 7)
 
-    return grid, start, goal, {"name": "Narrow Passage Map w/ Jump"}
+    return Map(grid, start, goal, "Narrow Passage Map w/ Jump")
 
 # =========================
 # Map 3: Static Map (multi-passage)
@@ -81,7 +91,7 @@ def multi_passage():
     start = (1, 1)
     goal = (18, 8)
 
-    return grid, start, goal, {"name": "Multi Route Map"}
+    return Map(grid, start, goal, "Multi Route Map")
 
 # =========================
 # Map 4: Simple Dynamic Map (one moving obstacle)
@@ -100,7 +110,7 @@ def simple_dynamic():
     start = (2, 1)
     goal = (17, 8)
 
-    return grid, start, goal, {"name": "Simple Dynamic Map"}
+    return Map(grid, start, goal, "Simple Dynamic Map")
 
 # =========================
 # Map 5: Hard Dynamic Map (multiple moving obstacles)
@@ -134,7 +144,7 @@ def hard_dynamic():
     start = (1, 5)
     goal = (18, 18)
 
-    return grid, start, goal, {"name": "Hard Dynamic Map"}
+    return Map(grid, start, goal, "Hard Dynamic Map")
 
 # =========================
 # Map loader
