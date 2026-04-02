@@ -1,5 +1,6 @@
 from typing import List, Tuple, NamedTuple
 import math
+import numpy as np
  
  
 class State(NamedTuple):
@@ -59,10 +60,49 @@ class RobotDynamics:
         """Can robot hop over this obstacle when moving from state1 to state2?"""
         pass
     
-    def trajectory(self, state1: State, state2: State, num_points: int = 10) -> List[State]:
+    def trajectory(self, state1: State, state2: State, num_substeps: int = 10) -> List[State]:
         """Return interpolated trajectory for collision checking."""
         # TODO: Implement (placeholder: linear interpolation)
-        pass
+
+        # Defining the differential drive kinematics of the robot
+
+        dt = 1.0 / num_substeps # time step
+
+        trajectory = np.zeros((num_substeps, 3))
+
+        x, y, theta = state1.x, state1.y, state1.theta
+
+        for i in range(num_substeps):
+            # Distance and direction to target state2
+            dx = state2.x - x
+            dy = state2.y - y
+            dtheta = math.atan2(dy, dx) - theta
+
+            # Wrap angular difference to (-pi, pi]
+            dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
+
+            # simple controller
+            v = self.V
+            omega = 2.0 * dtheta   # proportional control
+
+            # integrate
+            x += v * math.cos(theta) * dt
+            y += v * math.sin(theta) * dt
+            theta += omega * dt
+            theta = (theta + np.pi) % (2 * np.pi) - np.pi
+
+            # Store
+            trajectory[i, 0] = x
+            trajectory[i, 1] = y
+            trajectory[i, 2] = theta
+
+            # Early stop if close to target
+            if np.sqrt(dx*dx + dy*dy) < 0.2:
+                trajectory = trajectory[:i+1]
+                break
+
+        # Convert to List[State] (keep compatibility with your system)
+        return [State(p[0], p[1], p[2]) for p in trajectory]
     
     def obstacle_position_at_time(self, obstacle_id: int, t: float) -> Tuple:
         """Return obstacle position (x, y, w, h) at time t."""
