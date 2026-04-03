@@ -50,6 +50,9 @@ class RobotDynamics:
     Interface for plugging in custom robot dynamics.
     Dynamics team fills in the implementations.
     """
+    def __init__(self, max_vel=1.0, max_angular_vel=0.5):
+        self.max_vel = max_vel
+        self.max_angular_vel = max_angular_vel
     
     def move_cost(self, state1: State, state2: State) -> float:
         """Cost (time) to move between two states."""
@@ -59,50 +62,63 @@ class RobotDynamics:
     def can_hop_over(self, obstacle, state1: State, state2: State) -> bool:
         """Can robot hop over this obstacle when moving from state1 to state2?"""
         pass
+
+    # def hop_over(Self, state1: State, state2: State) ->
+
+    def robot_controller(self, nearest_state: State, target_state: State):
+        """
+        Simple proportional controller to generate (v, omega)
+        that drives the robot toward the target.
+        """
+
+        dx = target_state.x - nearest_state.x
+        dy = target_state.y - nearest_state.y
+
+        # Distance and heading
+        lin_dist = math.sqrt(dx*dx + dy*dy)
+        desired_theta = math.atan2(dy, dx)
+
+        # Heading error
+        dtheta = desired_theta - nearest_state.theta
+        dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
+
+        # Gains (tune these!)
+        v_gain = 1.0
+        omega_gain = 2.0
+
+        # Control
+        v = v_gain * lin_dist
+        omega = omega_gain * dtheta
+
+        # Clip
+        v = np.clip(v, -self.max_vel, self.max_vel)
+        omega = np.clip(omega, -self.max_angular_vel, self.max_angular_vel)
+
+        return v, omega
     
-    def trajectory(self, state1: State, state2: State, num_substeps: int = 10) -> List[State]:
-        """Return interpolated trajectory for collision checking."""
-        # TODO: Implement (placeholder: linear interpolation)
+    def trajectory(self, state: State, v: float, omega: float, num_substeps: int = 10):
+        """
+        Forward simulate robot dynamics given constant (v, omega).
+        Returns Nx3 numpy array.
+        """
 
-        # Defining the differential drive kinematics of the robot
-
-        dt = 1.0 / num_substeps # time step
+        dt = 1.0 / num_substeps
 
         trajectory = np.zeros((num_substeps, 3))
 
-        x, y, theta = state1.x, state1.y, state1.theta
+        x, y, theta = state.x, state.y, state.theta
 
         for i in range(num_substeps):
-            # Distance and direction to target state2
-            dx = state2.x - x
-            dy = state2.y - y
-            dtheta = math.atan2(dy, dx) - theta
-
-            # Wrap angular difference to (-pi, pi]
-            dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
-
-            # simple controller
-            v = self.V
-            omega = 2.0 * dtheta   # proportional control
-
-            # integrate
             x += v * math.cos(theta) * dt
             y += v * math.sin(theta) * dt
             theta += omega * dt
+
+            # Wrap angle
             theta = (theta + np.pi) % (2 * np.pi) - np.pi
 
-            # Store
-            trajectory[i, 0] = x
-            trajectory[i, 1] = y
-            trajectory[i, 2] = theta
+            trajectory[i] = [x, y, theta]
 
-            # Early stop if close to target
-            if np.sqrt(dx*dx + dy*dy) < 0.2:
-                trajectory = trajectory[:i+1]
-                break
-
-        # Convert to List[State] (keep compatibility with your system)
-        return [State(p[0], p[1], p[2]) for p in trajectory]
+        return trajectory
     
     def obstacle_position_at_time(self, obstacle_id: int, t: float) -> Tuple:
         """Return obstacle position (x, y, w, h) at time t."""
@@ -122,7 +138,7 @@ class RobotDynamics:
 class jumping_turtle_dynamics(RobotDynamics):
     """ To be implemented"""
 
-class rurtle_dynamics(RobotDynamics):
+class turtle_dynamics(RobotDynamics):
     """ To be implemented"""
 
 class LIMP_dynamics(RobotDynamics):
