@@ -50,9 +50,10 @@ class RobotDynamics:
     Interface for plugging in custom robot dynamics.
     Dynamics team fills in the implementations.
     """
-    def __init__(self, max_vel=1.0, max_angular_vel=0.5):
+    def __init__(self, max_vel = 1.0, max_angular_vel = 0.5, robot_radius = 0.5):
         self.max_vel = max_vel
         self.max_angular_vel = max_angular_vel
+        self.robot_radius = robot_radius
     
     def move_cost(self, state1: State, state2: State) -> float:
         """Cost (time) to move between two states."""
