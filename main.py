@@ -56,7 +56,7 @@ def run_simulation(map_name):
     m = get_map(map_name)
     grid = m.grid
     start = m.start
-    goal = m.goal
+    goals = m.goals
     name = m.name
 
     # =========================
@@ -64,17 +64,19 @@ def run_simulation(map_name):
     # =========================
     if map_name == "map4":
         dynamic_obstacles = [
-            {"pos": [6, 2], "size": 2, "vel": [0, 1]},   # horizontal
-            {"pos": [14, 5], "size": 2, "vel": [0, -1]}  # horizontal
+            {"pos": [3, 2], "size": 2, "vel": [0, 1]},   # horizontal (right)
+            {"pos": [7, 12], "size": 2, "vel": [0, 1]},   # horizontal (right)
+            {"pos": [11, 8], "size": 2, "vel": [0, -1]},  # horizontal (left)
+            {"pos": [15, 5], "size": 2, "vel": [0, -1]}  # horizontal (left)
         ]
 
     elif map_name == "map5":
         dynamic_obstacles = [
-            {"pos": [5, 1], "size": 2, "vel": [1, 0]},    # vertical
-            {"pos": [15, 9], "size": 2, "vel": [-1, 0]},  # vertical
-            {"pos": [10, 11], "size": 2, "vel": [0, 1]},  # horizontal
-            {"pos": [7, 14], "size": 2, "vel": [0, -1]},  # horizontal
-            {"pos": [12, 12], "size": 2, "vel": [1, 0]},  # vertical
+            {"pos": [5, 1], "size": 2, "vel": [1, 0]},    # vertical (down)
+            {"pos": [15, 9], "size": 2, "vel": [-1, 0]},  # vertical (up)
+            {"pos": [10, 11], "size": 2, "vel": [0, 1]},  # horizontal (right)
+            {"pos": [7, 14], "size": 2, "vel": [0, -1]},  # horizontal (left)
+            {"pos": [12, 12], "size": 2, "vel": [1, 0]},  # vertical (down)
         ]
 
     else:
@@ -95,7 +97,7 @@ def run_simulation(map_name):
         update_obstacles(dynamic_obstacles, grid)
 
         # =========================
-        # 2. create temp grid
+        # 2. create temp grid (for static + dynamic obstacles; does not modify original grid)
         # =========================
         temp_grid = grid.copy()
 
@@ -116,10 +118,11 @@ def run_simulation(map_name):
         ax.imshow(1 - temp_grid, cmap='gray', origin='upper')
 
         # =========================
-        # 5. draw start + goal
+        # 5. draw start + goals
         # =========================
         ax.scatter(start[1], start[0], c='green', s=120, label='Start')
-        ax.scatter(goal[1], goal[0], c='red', s=120, label='Goal')
+        for goal in goals:
+            ax.scatter(goal[1], goal[0], c='red', s=120, label='Goal')
 
         # =========================
         # 6. formatting
