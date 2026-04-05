@@ -83,7 +83,7 @@ Details:
       * Dynamics module tells us obstacle positions over time
       * We compute time robot spends on edge, check collisions at those times
 Examples of what to implement:
-    - is_collision_free_trajectory(start_state, end_state, static_obstacles, 
+    - is_collision_free(start_state, end_state, static_obstacles, 
                        dynamic_obstacles, dynamics_model, t_start=0)
     - line_segment_intersects_rectangle(p1, p2, rect)
     - point_in_rectangle(point, rect)
@@ -204,6 +204,55 @@ Examples of what to implement:
     - Placeholder implementations
     - Integration points: steer(), collision_check(), edge_cost()
 
+TODO 13: MAIN RRT* PLANNING LOOP
+--------------------------------
+Purpose: Build an optimized tree (not just feasible) using rewiring
+Details:
+    - Initialize tree with start configuration (cost = 0)
+    - Main loop:
+        FOR each iteration (up to max_iter or until goal found):
+            1. Sample random config
+               - With goal biasing (optional)
+            2. Find nearest node in tree
+            3. Steer toward sample (using Dubins / dynamics)
+            4. Collision check new edge
+               - Must be collision-free AND within bounds
+            5. Find neighbors within radius r
+               - r = γ * (log(n) / n)^(1/d)
+               - n = number of nodes
+               - d = dimension (2 for x,y)
+            6. Choose BEST PARENT (minimum cost)
+               FOR each neighbor:
+                   - Try connecting neighbor → new node
+                   - Check collision + bounds
+                   - Compute cost:
+                        cost = neighbor.cost + edge_cost(neighbor, new)
+                   - Pick lowest-cost valid parent
+            7. Add new node to tree
+               - Assign best parent
+               - Store cost
+            8. REWIRE neighbors (optimization step)
+               FOR each neighbor:
+                   - Try connecting new node → neighbor
+                   - Check collision + bounds
+                   - Compute new cost:
+                        cost = new_node.cost + edge_cost(new, neighbor)
+                   - If cheaper:
+                        update neighbor.parent
+                        update neighbor.cost
+                        update path
+            9. Check if goal reached
+               - Distance threshold
+            10. If goal reached:
+                - Store best goal node
+                - Continue for a few iterations (optional) to improve cost
+                - Or terminate early
+    - After loop:
+        - If goal found:
+            backtrack from goal → start using parent pointers
+            return path
+        - Else:
+            return None (no path found)
 ================================================================================
 """
 
@@ -361,7 +410,8 @@ def nearest_node(tree: RRTTree, config: State) -> TreeNode:
 # TODO 4: STEERING / LOCAL EDGE INTERPOLATION
 # ============================================================================
 
-def steer(start: State, target: State, dynamics_model):
+def steer(start: State, target: State, step_size: float, 
+          dynamics_model) -> Optional[State]:
     """
     Steer from start toward target, moving at most step_size distance.
     Uses dynamics model for robot-specific behavior.
@@ -377,62 +427,32 @@ def steer(start: State, target: State, dynamics_model):
     """
     # TODO: Implement steering logic
     # For now, use dynamics model's trajectory method
-    if dynamics_model is None:
-        return None
-    
-    # STEP 1: compute control
-    v, omega = dynamics_model.robot_controller(start, target)
-
-    # STEP 2: simulate trajectory
-    trajectory = dynamics_model.trajectory(start, v, omega)
-
-    if len(trajectory) == 0:
-        return None
-    
-    return trajectory
+    if dynamics_model is not None:
+        return dynamics_model.trajectory(start, target, step_size)
+    else:
+        # Fallback: simple straight-line steering
+        distance = start.distance_to(target)
+        if distance < 1e-6:
+            return start
+        
+        # Unit direction vector
+        dx = (target.x - start.x) / distance
+        dy = (target.y - start.y) / distance
+        
+        # Move step_size in that direction
+        new_x = start.x + step_size * dx
+        new_y = start.y + step_size * dy
+        new_theta = math.atan2(dy, dx)
+        
+        return State(new_x, new_y, new_theta)
 
 
 # ============================================================================
 # TODO 5: COLLISION CHECKING
 # ============================================================================
 
-def inflate_rectangle(rect, radius):
-    """
-    Inflate rectangle by robot radius.
-
-    Args:
-        rect: (x, y, w, h)
-        radius: robot radius
-
-    Returns:
-        inflated rectangle (x, y, w, h)
-    """
-    rx, ry, w, h = rect
-
-    return (
-        rx - radius,
-        ry - radius,
-        w + 2 * radius,
-        h + 2 * radius
-    )
-
-def point_in_rectangle(point: Tuple[float, float], rect: Tuple[float, float, float, float]):
-    """
-    Check if a point is inside an axis-aligned rectangle.
-
-    Args:
-        point: (x, y)
-        rect: (x_min, y_min, width, height)
-
-    Returns:
-        True if inside rectangle, False otherwise
-    """
-    px, py = point
-    rx, ry, w, h = rect
-
-    return (rx <= px <= rx + w) and (ry <= py <= ry + h)
-
-def is_collision_free_trajectory(trajectory, static_obstacles, dynamics_model):
+def is_collision_free(start: State, end: State, static_obstacles, 
+                      dynamics_model=None, t_start: float = 0.0) -> bool:
     """
     Check if path from start to end is collision-free.
     Accounts for static obstacles and optionally dynamic obstacles.
@@ -447,21 +467,10 @@ def is_collision_free_trajectory(trajectory, static_obstacles, dynamics_model):
     Returns:
         True if path is collision-free, False otherwise
     """
-    # TODO: Implement collision checking - Check collision along entire trajectory.
-
-    radius = dynamics_model.robot_radius
-
-    for point in trajectory:
-        x, y, _ = point
-
-        # TODO: replace with real obstacle check
-        for obs in static_obstacles:
-            inflated_obs = inflate_rectangle(obs, radius)
-
-            if point_in_rectangle((x, y), inflated_obs):
-                return False
-
+    # TODO: Implement collision checking
+    # For now, assume collision-free
     return True
+
 
 # ============================================================================
 # TODO 6: EDGE COST COMPUTATION
@@ -583,7 +592,7 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
     # Extract map info
     map_bounds = map_info.get('bounds', (0, 100, 0, 100))
     static_obstacles = map_info.get('obstacles', [])
-    
+
     while iterations < max_iterations:
         # Check time budget
         if time.time() - start_time > max_time:
@@ -596,28 +605,26 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
         q_nearest_node = nearest_node(tree, q_rand)
         
         # 3. Steer toward sample
-        trajectory = steer(q_nearest_node.state, q_rand, dynamics_model)
-
-        if trajectory is None:
+        q_new = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
+        
+        if q_new is None:
             iterations += 1
             continue
-
+        
         # 4. Collision check
-        if is_collision_free_trajectory(trajectory, static_obstacles, dynamics_model):
-
-            # 5. Extract last node of the trajectory as a State
-            x, y, theta = trajectory[-1]
-            q_new = State(x, y, theta)            
-
-            # 6. Add to RRT tree
-            new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
+        if is_collision_free(q_nearest_node.state, q_new, static_obstacles, 
+                            dynamics_model):
+            # 5. Add to tree
+            new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, 
+                                                       dynamics_model)
             new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
             
-            # 6. Check if reached point is at goal point
+            # 6. Check goal
             if is_goal_reached(q_new, goal, goal_threshold):
                 path = extract_path(new_node)
                 planning_time = time.time() - start_time
-                print(f"Path found in {planning_time:.2f}s, {iterations} iterations, path length: {len(path)}")
+                print(f"Path found in {planning_time:.2f}s, {iterations} iterations, "
+                      f"path length: {len(path)}")
                 return path
         
         iterations += 1
@@ -625,6 +632,120 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
     # No path found
     planning_time = time.time() - start_time
     print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
+    return None
+
+# ============================================================================
+# HELPER FUNCTION --> Grid to obstacle conversion (for collision checking)
+# ============================================================================
+def grid_to_obstacles(grid):
+    obstacles = []
+    rows, cols = grid.shape
+
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r, c] == 1:
+                obstacles.append((c, r, 1, 1))  # (x, y, w, h)
+
+    return obstacles
+
+# ============================================================================
+# TODO 13: MAIN RRT* PLANNING LOOP
+# ============================================================================
+def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, 
+                  max_iterations: int = 5000, max_time: float = 10.0, 
+                  step_size: float = 1.0, goal_threshold: float = 0.5,
+                  p_goal_bias: float = 0.05) -> Optional[List[State]]:
+
+    start_time = time.time()
+    iterations = 0
+    tree = RRTTree(start) # initialize tree with start node
+
+    # Extract map info
+    rows, cols = map_info.dimensions
+    map_bounds = (0, cols, 0, rows)
+    static_obstacles = grid_to_obstacles(map_info.grid) # convert grid to list of rectangles for collision checking
+
+    while iterations < max_iterations:
+        # Time check
+        if time.time() - start_time > max_time:
+            break
+
+        # Step 1: Sample random configuration (with goal biasing))
+        q_rand = sample_random_state(map_bounds, goal = goal, p_goal = p_goal_bias)
+
+        # Step 2: Find nearest node in tree
+        q_nearest_node = nearest_node(tree, q_rand)
+
+        # Step 3: Steer from nearest node toward random sample (won't necessarily reach q_rand, just move step_size in that direction)
+        trajectory = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
+
+        if trajectory is None: # if steering fails (e.g., due to dynamics constraints), skip this iteration
+            iterations += 1
+            continue
+
+        # Step 4: Collision check the new edge (considering static + dynamic obstacles) -> checks along trajectory not just endpoint
+        if is_collision_free(trajectory, static_obstacles, dynamics_model):
+
+            x, y, theta = trajectory[-1]
+            q_new = State(x, y, theta) # taking the last point in that trajectory as the new node position
+
+            # Step 5: Find neighbors within radius defined by formula r = gamma * (log(n) / n)^(1/d)
+            n = tree.size()
+            d = 2
+            gamma = 5.0  # tuning parameter
+
+            radius = gamma * (math.log(n + 1) / (n + 1)) ** (1/d) # radius shrinks as tree grows (explore widely at the start, then refine locally later on)
+
+            neighbors = tree.get_neighbors_in_radius(q_new, radius)
+
+            # Step 6: Choose best parent (minimum cost) from neighbors (start with nearest node as default parent)
+            best_parent = q_nearest_node
+            best_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
+
+            for neighbor in neighbors:
+
+                traj = steer(neighbor.state, q_new, dynamics_model) # try connecting neighbor to new node
+                if traj is None: # steering failure check
+                    continue
+
+                if not is_collision_free(traj, static_obstacles, dynamics_model): # collision check
+                    continue
+
+                cost = neighbor.cost + edge_cost(neighbor.state, q_new, dynamics_model) # cost of being at neighbor + cost to get to new node
+
+                if cost < best_cost:
+                    best_parent = neighbor
+                    best_cost = cost
+
+            # Step 7: Add new node to tree with best parent and cost
+            new_node = tree.add_node(q_new, parent = best_parent, cost = best_cost)
+
+            # Step 8: Rewire neighbors (optimization step) -> check if going through new node is cheaper for any of the neighbors
+            for neighbor in neighbors:
+
+                traj = steer(q_new, neighbor.state, dynamics_model) # try connecting new node to neighbor (reverse direction from before; new node is now the parent)
+                if traj is None:
+                    continue
+
+                if not is_collision_free(traj, static_obstacles, dynamics_model):
+                    continue
+
+                new_cost = new_node.cost + edge_cost(q_new, neighbor.state, dynamics_model)
+
+                if new_cost < neighbor.cost:
+                    neighbor.parent = new_node # rewire neighbor to new node
+                    neighbor.cost = new_cost
+
+            # Step 9: Check if goal reached
+            if is_goal_reached(q_new, goal, goal_threshold):
+                path = extract_path(new_node)
+                planning_time = time.time() - start_time
+                print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
+                return path
+
+        iterations += 1
+
+    print("[RRT*] No path found")
     return None
 
 
