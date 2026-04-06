@@ -308,6 +308,8 @@ import random
 import numpy as np
 
 from dynamics import State
+from maps import Map
+from config import GOAL_SAMPLE_RATE
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -410,14 +412,15 @@ class RRTTree:
 # TODO 2: RANDOM SAMPLING
 # ============================================================================
 
-def sample_random_state(map_bounds: Tuple, goal: State = None, 
-                         p_goal: float = 0.05) -> State:
+def sample_random_state(x_bounds: Tuple, y_bounds:Tuple, goal: State = None, 
+                         p_goal: float = GOAL_SAMPLE_RATE) -> State:
     """
     Sample a random configuration.
     With probability p_goal, return the goal. Otherwise, sample uniformly.
     
     Args:
-        map_bounds: Tuple of (x_min, x_max, y_min, y_max)
+        x_bounds: Tuple of (x_min, x_max) in meters
+        y_bounds: Tuple of (y_min, y_max) in meters
         goal: Goal state (if None, never sample goal)
         p_goal: Probability of sampling goal directly
     
@@ -428,10 +431,16 @@ def sample_random_state(map_bounds: Tuple, goal: State = None,
         return goal
     
     # Random uniform in map bounds
-    x = random.uniform(map_bounds[0], map_bounds[1])
-    y = random.uniform(map_bounds[2], map_bounds[3])
+    x = random.uniform(x_bounds[0], x_bounds[1])
+    y = random.uniform(y_bounds[0], y_bounds[1])
     theta = random.uniform(0, 2 * math.pi)
     return State(x, y, theta)
+
+def is_state_valid(map:Map, sample_state:State):
+    x,y,theta = sample_state
+    row,col = map.meters_to_grid(x,y)
+    return map.is_in_bounds(row,col) and (map.grid[row,col] != 1)
+
 
 
 # ============================================================================
@@ -650,7 +659,7 @@ def extract_path(goal_node: TreeNode) -> List[State]:
 # TODO 10: MAIN RRT PLANNING LOOP
 # ============================================================================
 
-def plan_rrt(start: State, goal: State, map_info, dynamics_model, 
+def plan_rrt(start: State, goal: State, map: Map, dynamics_model, 
              max_iterations: int = 5000, max_time: float = 10.0, 
              step_size: float = 1.0, goal_threshold: float = 0.5,
              p_goal_bias: float = 0.05) -> Optional[List[State]]:
@@ -677,8 +686,11 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
     tree = RRTTree(start)
     
     # Extract map info
-    map_bounds = map_info.get('bounds', (0, 100, 0, 100))
-    static_obstacles = map_info.get('obstacles', [])
+    grid = map.grid
+    (row_count,col_count) = map.dimensions
+    map_x_bounds = (0,map.width)
+    map_y_bounds = (0,map.width)
+    static_obstacles = map.get_obstacle_coordinates()
 
     while iterations < max_iterations:
         # Check time budget
@@ -686,7 +698,11 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
             break
         
         # 1. Sample random config
-        q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
+        q_rand = sample_random_state(map_x_bounds, map_y_bounds, goal=goal, p_goal=p_goal_bias)
+
+        # validate sample to be in bounds and not in an obstacle
+        if not is_state_valid(map,q_rand):
+            continue
         
         # 2. Find nearest node
         q_nearest_node = nearest_node(tree, q_rand)
@@ -727,6 +743,8 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
 # ============================================================================
 # HELPER FUNCTION --> Grid to obstacle conversion (for collision checking)
 # ============================================================================
+
+#TODO : needs to changes
 def grid_to_obstacles(grid):
     obstacles = []
     rows, cols = grid.shape
