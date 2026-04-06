@@ -253,6 +253,51 @@ Details:
             return path
         - Else:
             return None (no path found)
+            
+TODO 14: MAIN RRT*-FND PLANNING LOOP
+--------------------------------
+Purpose:
+    Maintain and repair an RRT* path in the presence of dynamic obstacles
+    without rebuilding the entire tree from scratch
+Details:
+    - Phase 1: INITIAL PLANNING
+        - Run RRT* (or RRT*FN) to compute path from start → goal
+        - Store:
+            τ = full tree
+            σ = solution path (list of nodes)
+    - Phase 2: EXECUTION + MONITORING
+        - Set current node:
+            p_current = start
+        - While p_current is not goal:
+            1. Move along current path σ
+            2. Update dynamic obstacles
+                - Environment changes over time
+            3. Check if path ahead is still valid
+                - DetectCollision(σ, p_current) --> checks all future edges in the path for collisions with update obstacles
+            4. IF collision detected:
+                a. Stop movement
+                b. Split path (SelectBranch function):
+                    - Parent tree τ at p_current
+                    - Future branch (potentially invalid)
+                c. ValidPath function:
+                    - Removes nodes/edges that collide with obstacles
+                    - The removed portion becomes σ_separate
+                d. Try RECONNECT:
+                    - Find nearby nodes in main tree τ
+                    - Attempt direct connection:
+                        ObstacleFree(p_near, σ_separate)
+                    - If successful:
+                        τ ← reconnect trees
+                e. If reconnect fails:
+                    - REGROW:
+                        Grow tree τ from p_current
+                        Bias toward σ_separate region
+                f. Recompute solution path:
+                    σ ← SolutionPath(τ, p_current)
+                g. Resume movement
+            5. Move to next node:
+                p_current ← next node in σ
+    - End when goal reached
 ================================================================================
 """
 
@@ -748,7 +793,82 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
     print("[RRT*] No path found")
     return None
 
-
+# ============================================================================
+# TODO 14: MAIN RRT*FND PLANNING LOOP
+# ============================================================================
+def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
+                      max_iterations: int = 5000, max_time: float = 10.0,
+                      step_size: float = 1.0, goal_threshold: float = 0.5,
+                      p_goal_bias: float = 0.05):
+    
+    # Step 1: Initial Planning Phase (same as RRT*)
+    # - run the existing RRT* planner to compute an initial path from start to goal
+    # - build the full tree (τ) and extract the solution path (σ)
+    # - this will be the baseline path before any dynamic obstacles are introduced
+    
+    # Step 2: Initialization
+    # - set the current node (p_current) to the start configuration
+    # - keep track of current path (σ) 
+    # - initialize any time or iteration tracking if needed for monitoring
+    
+    # Step 3: Main Execution Loop
+    # - while p_current is not the goal
+    
+        # Step 3.1: Move along the current path σ
+        # - move the robot forward along the path σ, updating p_current as it progresses
+        # - this simulates the robot executing the planned path in the environment
+        
+        # Step 3.2: Update dynamic obstacles
+        # - update positions of moving obstacles (should be provided by dynamics module or environment model)
+        # - environment now changes over time, so we need to keep track of where obstacles are at the current time step
+        
+        # Step 3.3: Collision Detection
+        # - check if the path ahead (the remaining portion of σ from p_current to goal) is still valid given the updated obstacle positions
+        # - this involves checking all future edges in the path for collisions with the new obstacle positions
+        # - if a collision is detected, we need to trigger the path repair process
+        
+            # IF COLLISION IS DETECTED
+            # Step 3.3.1: Stop Movement
+            # - immediately halt the robot's movement to prevent collision
+            # - robot stays at p_current, which is the last safe position before the collision
+            
+            # Step 3.3.2: SelectBranch function
+            # - Split the tree τ at p_current
+            # - Keep: nodes still connected to p_current (main tree)
+            # - Separate: forward portion of path toward goal
+            
+            # Step 3.3.3: ValidPath function
+            # - Remove nodes/edges that collide with obstacles
+            # - This cleans the tree
+            # - The removed portion becomes σ_separate (from node right after obstacle to goal)
+            
+            # Step 3.3.4: Try Reconnect
+            # - Find nearby nodes in main tree τ that are close to the start of σ_separate
+            # - Attempt direct connection
+            # - For each nearby node, check if connecting to σ_separate is collision-free and is a valid trajectory
+            # - If successful, reconnect the trees (main tree + separate path) and update σ and break loop
+            
+            # Step 3.3.5: If Reconnect Fails, Regrow
+            # - If no valid connection is found, we need to regrow the tree τ from p_current
+            # - Bias the growth toward the region of σ_separate to try to find a new path around the obstacle
+            # - This involves running a new RRT* from p_current with the same goal, but with updated obstacle information
+            
+            # Step 3.3.6: Recompute Solution Path
+            # - After reconnecting or regrowing, we need to recompute the solution path σ from p_current to goal using the updated tree τ
+            # - This will give us a new path that avoids the newly detected obstacle
+            
+            # Step 3.3.7: Resume Movement
+            # - Once we have a new path σ, we can resume movement along this path toward
+            
+        # Step 3.4: Move to Next Node
+        # - Update p_current to the next node in the current path σ
+        
+    # Step 4: End when goal reached
+    # - Once p_current is within the goal threshold, we can terminate and return the final path taken to reach the goal
+            
+    return None # placeholder
+    
+    
 # ============================================================================
 # EXAMPLE USAGE
 # ============================================================================
