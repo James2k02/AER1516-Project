@@ -1,6 +1,6 @@
 '''
 AER1516 - Project
-Template file for visualizing the maps defined in maps.py. This file can be used to quickly check the layout of the maps and ensure that the start and goal points are correctly placed. 
+Temporary file for visualizing the maps defined in maps.py. This file can be used to quickly check the layout of the maps and ensure that the start and goal points are correctly placed. 
 It uses matplotlib to display the grid, with obstacles shown in black, free space in white, the start point in green, and the goal point in red.
 '''
 
