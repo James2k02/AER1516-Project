@@ -6,6 +6,10 @@ It will also handle the visualization of the maps and the paths found by the alg
 
 import matplotlib.pyplot as plt
 from maps import get_map
+from dynamics import RobotDynamics
+from dynamics import State
+from path_planner import plan_rrt
+from path_planner import grid_to_obstacles
 
 # =========================
 # Checking if a position is valid for the obstacle to move into (no walls, within bounds)
@@ -49,38 +53,111 @@ def update_obstacles(obstacles, grid):
             
             
 # =========================
-# MAIN FUNCTION
+# MAIN FUNCTIONS
 # =========================
+
+def RRT_tester(map_name):
+    # =========================
+    # Load map
+    # =========================
+    m = get_map(map_name)
+    grid = m.grid
+
+    # =========================
+    # Setup dynamics
+    # =========================
+    dynamics_model = RobotDynamics()
+    dynamics_model.grid = grid
+
+    # Convert grid → static obstacles (CRITICAL)
+    dynamics_model.static_obstacles = grid_to_obstacles(grid)
+
+    # No dynamic obstacles for map1
+    dynamics_model.dynamic_obstacles = []
+
+    # =========================
+    # Convert start/goal to State
+    # =========================
+    # NOTE: (row, col) → (x, y)
+    start = State(m.start[1], m.start[0], 0)
+    goal = State(m.goals[0][1], m.goals[0][0], 0)
+
+    print(f"Start: {start}")
+    print(f"Goal: {goal}")
+
+    # =========================
+    # Visualization setup
+    # =========================
+    plt.ion()
+    fig, ax = plt.subplots()
+
+    # =========================
+    # Run RRT
+    # =========================
+    path = plan_rrt(
+        start=start,
+        goal=goal,
+        map_info=m,
+        dynamics_model=dynamics_model,
+        ax=ax,
+        step_size = 0.5,
+        max_iterations=3000,
+        goal_threshold=1.0
+    )
+
+    # =========================
+    # Final display
+    # =========================
+    plt.ioff()
+
+    if path is None:
+        print("No path found.")
+    else:
+        print(f"Path length: {len(path)}")
+
+    plt.show()
+
+
 def run_simulation(map_name):
     # load map
     m = get_map(map_name)
     grid = m.grid
-    start = m.start
-    goals = m.goals
+
+    dynamics_model = RobotDynamics()
+    dynamics_model.grid = grid
+    dynamics_model.static_obstacles = grid_to_obstacles(grid)
+
+    start = State(m.start[1], m.start[0], 0)
+    goal = State(m.goals[0][1], m.goals[0][0], 0)
     name = m.name
+
+    plt.ion()
+    fig, ax = plt.subplots()
 
     # =========================
     # Define dynamic obstacles
     # =========================
     if map_name == "map4":
         dynamic_obstacles = [
-            {"pos": [3, 2], "size": 2, "vel": [0, 1]},   # horizontal (right)
-            {"pos": [7, 12], "size": 2, "vel": [0, 1]},   # horizontal (right)
-            {"pos": [11, 8], "size": 2, "vel": [0, -1]},  # horizontal (left)
-            {"pos": [15, 5], "size": 2, "vel": [0, -1]}  # horizontal (left)
+            {"initial_pos": [3, 2], "pos": [3, 2], "size": 2, "vel": [0, 1]},   # horizontal (right)
+            {"initial_pos": [7, 12], "pos": [7, 12], "size": 2, "vel": [0, 1]},   # horizontal (right)
+            {"initial_pos": [11, 8], "pos": [11, 8], "size": 2, "vel": [0, -1]},  # horizontal (left)
+            {"initial_pos": [15, 5], "pos": [15, 5], "size": 2, "vel": [0, -1]}  # horizontal (left)
         ]
 
     elif map_name == "map5":
         dynamic_obstacles = [
-            {"pos": [5, 1], "size": 2, "vel": [1, 0]},    # vertical (down)
-            {"pos": [15, 9], "size": 2, "vel": [-1, 0]},  # vertical (up)
-            {"pos": [10, 11], "size": 2, "vel": [0, 1]},  # horizontal (right)
-            {"pos": [7, 14], "size": 2, "vel": [0, -1]},  # horizontal (left)
-            {"pos": [12, 12], "size": 2, "vel": [1, 0]},  # vertical (down)
+            {"initial_pos": [5, 1], "pos": [5, 1], "size": 2, "vel": [1, 0]},    # vertical (down)
+            {"initial_pos": [15, 9], "pos": [15, 9], "size": 2, "vel": [-1, 0]},  # vertical (up)
+            {"initial_pos": [10, 11], "pos": [10, 11], "size": 2, "vel": [0, 1]},  # horizontal (right)
+            {"initial_pos": [7, 14], "pos": [7, 14], "size": 2, "vel": [0, -1]},  # horizontal (left)
+            {"initial_pos": [12, 12], "pos": [12, 12], "size": 2, "vel": [1, 0]},  # vertical (down)
         ]
 
     else:
         dynamic_obstacles = []
+
+    dynamics_model.dynamic_obstacles = dynamic_obstacles
 
     # =========================
     # Visualization setup
@@ -144,4 +221,5 @@ def run_simulation(map_name):
 # =========================
 if __name__ == "__main__":
     # choose map: "map4" or "map5"
-    run_simulation("map4")
+    # run_simulation("map1")
+    RRT_tester("map1")

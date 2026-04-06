@@ -37,8 +37,9 @@ class State(NamedTuple):
             Euclidean distance between (x, y) positions
         """
         return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
- 
-    def state_distance(s1: State, s2: State) -> float:
+    
+    @staticmethod
+    def state_distance(s1: 'State', s2: 'State') -> float:
         """
         Compute Euclidean distance between two states (x, y only).
         """
@@ -55,6 +56,8 @@ class RobotDynamics:
         self.max_angular_vel = max_angular_vel
         self.robot_radius = robot_radius
 
+        self.grid = None
+        self.static_obstacles = []
         self.dynamic_obstacles = []
     
     def move_cost(self, state1: State, state2: State) -> float:
@@ -123,10 +126,43 @@ class RobotDynamics:
 
         return trajectory
     
-    def obstacle_position_at_time(self, obstacle_id: int, t: float) -> Tuple:
+    def is_valid_position(self, r, c, size):
+        for i in range(size):
+            for j in range(size):
+                rr = r + i
+                cc = c + j
+
+                if rr < 0 or rr >= self.grid.shape[0] or cc < 0 or cc >= self.grid.shape[1]:
+                    return False
+
+                if self.grid[rr, cc] == 1:
+                    return False
+
+        return True
+    
+    def obstacle_position_at_time(self, obstacle_id: int, t: float, num_substeps: int = 10):
         """Return obstacle position (x, y, w, h) at time t."""
         # TODO: Implement (placeholder: static obstacle)
-        pass
+        obs = self.dynamic_obstacles[obstacle_id]
+
+        pos = list(obs["initial_pos"])
+        vel = list(obs["vel"])
+        size = obs["size"]
+
+        steps = int(t)  # assume dt = 1 for now
+
+        for _ in range(steps):
+
+            r_new = pos[0] + vel[0]
+            c_new = pos[1] + vel[1]
+
+            if self.is_valid_position(r_new, c_new, size):
+                pos = [r_new, c_new]
+            else:
+                vel[0] *= -1
+                vel[1] *= -1
+
+        return (pos[1], pos[0], size, size)
     
     def get_max_speed(self) -> float:
         """Return maximum robot speed."""

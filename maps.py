@@ -46,7 +46,7 @@ def simple():
     grid[2:5, 12:15] = 1
     grid[7:11, 15:17] = 1
 
-    start = (1, 1)
+    start = (2, 2)
     goals = [(18, 18), (16, 5)]  # list of goals, can add more later
 
     return Map(grid, start, goals, "Simple Map")
