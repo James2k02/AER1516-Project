@@ -54,6 +54,8 @@ class RobotDynamics:
         self.max_vel = max_vel
         self.max_angular_vel = max_angular_vel
         self.robot_radius = robot_radius
+
+        self.dynamic_obstacles = []
     
     def move_cost(self, state1: State, state2: State) -> float:
         """Cost (time) to move between two states."""
