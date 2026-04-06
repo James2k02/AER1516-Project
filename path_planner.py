@@ -83,7 +83,7 @@ Details:
       * Dynamics module tells us obstacle positions over time
       * We compute time robot spends on edge, check collisions at those times
 Examples of what to implement:
-    - is_collision_free(start_state, end_state, static_obstacles, 
+    - is_collision_free_trajectory(start_state, end_state, static_obstacles, 
                        dynamic_obstacles, dynamics_model, t_start=0)
     - line_segment_intersects_rectangle(p1, p2, rect)
     - point_in_rectangle(point, rect)
@@ -305,6 +305,7 @@ from typing import List, Tuple, Optional
 import math
 import time
 import random
+import numpy as np
 
 from dynamics import State
 
@@ -455,8 +456,7 @@ def nearest_node(tree: RRTTree, config: State) -> TreeNode:
 # TODO 4: STEERING / LOCAL EDGE INTERPOLATION
 # ============================================================================
 
-def steer(start: State, target: State, step_size: float, 
-          dynamics_model) -> Optional[State]:
+def steer(start: State, target: State, dynamics_model):
     """
     Steer from start toward target, moving at most step_size distance.
     Uses dynamics model for robot-specific behavior.
@@ -472,32 +472,62 @@ def steer(start: State, target: State, step_size: float,
     """
     # TODO: Implement steering logic
     # For now, use dynamics model's trajectory method
-    if dynamics_model is not None:
-        return dynamics_model.trajectory(start, target, step_size)
-    else:
-        # Fallback: simple straight-line steering
-        distance = start.distance_to(target)
-        if distance < 1e-6:
-            return start
-        
-        # Unit direction vector
-        dx = (target.x - start.x) / distance
-        dy = (target.y - start.y) / distance
-        
-        # Move step_size in that direction
-        new_x = start.x + step_size * dx
-        new_y = start.y + step_size * dy
-        new_theta = math.atan2(dy, dx)
-        
-        return State(new_x, new_y, new_theta)
+    if dynamics_model is None:
+        return None
+    
+    # STEP 1: compute control
+    v, omega = dynamics_model.robot_controller(start, target)
+
+    # STEP 2: simulate trajectory
+    trajectory = dynamics_model.trajectory(start, v, omega)
+
+    if len(trajectory) == 0:
+        return None
+    
+    return trajectory
 
 
 # ============================================================================
 # TODO 5: COLLISION CHECKING
 # ============================================================================
 
-def is_collision_free(start: State, end: State, static_obstacles, 
-                      dynamics_model=None, t_start: float = 0.0) -> bool:
+def inflate_rectangle(rect, radius):
+    """
+    Inflate rectangle by robot radius.
+
+    Args:
+        rect: (x, y, w, h)
+        radius: robot radius
+
+    Returns:
+        inflated rectangle (x, y, w, h)
+    """
+    rx, ry, w, h = rect
+
+    return (
+        rx - radius,
+        ry - radius,
+        w + 2 * radius,
+        h + 2 * radius
+    )
+
+def point_in_rectangle(point: Tuple[float, float], rect: Tuple[float, float, float, float]):
+    """
+    Check if a point is inside an axis-aligned rectangle.
+
+    Args:
+        point: (x, y)
+        rect: (x_min, y_min, width, height)
+
+    Returns:
+        True if inside rectangle, False otherwise
+    """
+    px, py = point
+    rx, ry, w, h = rect
+
+    return (rx <= px <= rx + w) and (ry <= py <= ry + h)
+
+def is_collision_free_trajectory(trajectory, static_obstacles, dynamics_model):
     """
     Check if path from start to end is collision-free.
     Accounts for static obstacles and optionally dynamic obstacles.
@@ -513,7 +543,19 @@ def is_collision_free(start: State, end: State, static_obstacles,
         True if path is collision-free, False otherwise
     """
     # TODO: Implement collision checking
-    # For now, assume collision-free
+
+    radius = dynamics_model.robot_radius
+
+    for point in trajectory:
+        x, y, _ = point
+
+        # TODO: replace with real obstacle check
+        for obs in static_obstacles:
+            inflated_obs = inflate_rectangle(obs, radius)
+
+            if point_in_rectangle((x, y), inflated_obs):
+                return False
+
     return True
 
 
@@ -650,26 +692,29 @@ def plan_rrt(start: State, goal: State, map_info, dynamics_model,
         q_nearest_node = nearest_node(tree, q_rand)
         
         # 3. Steer toward sample
-        q_new = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
+        trajectory = steer(q_nearest_node.state, q_rand, dynamics_model)
         
-        if q_new is None:
+        if trajectory is None:
             iterations += 1
             continue
         
         # 4. Collision check
-        if is_collision_free(q_nearest_node.state, q_new, static_obstacles, 
-                            dynamics_model):
-            # 5. Add to tree
-            new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, 
-                                                       dynamics_model)
+
+        if is_collision_free_trajectory(trajectory, static_obstacles, dynamics_model):
+
+            # 5. Extract last node of the trajectory as a State
+            x, y, theta = trajectory[-1]
+            q_new = State(x, y, theta)            
+
+            # 6. Add to RRT tree
+            new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
             new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
-            
-            # 6. Check goal
+
+            # 7. Check if reached point is at goal point
             if is_goal_reached(q_new, goal, goal_threshold):
                 path = extract_path(new_node)
                 planning_time = time.time() - start_time
-                print(f"Path found in {planning_time:.2f}s, {iterations} iterations, "
-                      f"path length: {len(path)}")
+                print(f"Path found in {planning_time:.2f}s, {iterations} iterations, path length: {len(path)}")
                 return path
         
         iterations += 1
@@ -729,7 +774,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
             continue
 
         # Step 4: Collision check the new edge (considering static + dynamic obstacles) -> checks along trajectory not just endpoint
-        if is_collision_free(trajectory, static_obstacles, dynamics_model):
+        if is_collision_free_trajectory(trajectory, static_obstacles, dynamics_model):
 
             x, y, theta = trajectory[-1]
             q_new = State(x, y, theta) # taking the last point in that trajectory as the new node position
@@ -753,7 +798,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
                 if traj is None: # steering failure check
                     continue
 
-                if not is_collision_free(traj, static_obstacles, dynamics_model): # collision check
+                if not is_collision_free_trajectory(traj, static_obstacles, dynamics_model): # collision check
                     continue
 
                 cost = neighbor.cost + edge_cost(neighbor.state, q_new, dynamics_model) # cost of being at neighbor + cost to get to new node
@@ -772,7 +817,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
                 if traj is None:
                     continue
 
-                if not is_collision_free(traj, static_obstacles, dynamics_model):
+                if not is_collision_free_trajectory(traj, static_obstacles, dynamics_model):
                     continue
 
                 new_cost = new_node.cost + edge_cost(q_new, neighbor.state, dynamics_model)
