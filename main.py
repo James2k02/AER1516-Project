@@ -10,41 +10,7 @@ from maps import get_map
 from dynamics import RobotDynamics
 from dynamics import State
 from path_planner import plan_rrt
-from path_planner import grid_to_obstacles
-from path_planner import rrt_step
-from path_planner import visualize_rrt
-from path_planner import extract_path
-from path_planner import RRTTree
-
-# =========================
-# Checking if a position is valid for the obstacle to move into (no walls, within bounds)
-# =========================
-def is_valid_position(grid, r, c, size):
-    if r < 0 or c < 0 or r + size > grid.shape[0] or c + size > grid.shape[1]:
-        return False
-    return not np.any(grid[r:r+size, c:c+size] == 1)
-
-# =========================
-# Update dynamic obstacles
-# =========================
-def update_obstacles(obstacles, grid):
-    for obs in obstacles:
-        r, c = obs["pos"]
-        vr, vc = obs["vel"]
-        size = obs["size"]
-
-        # try move
-        r_new = r + vr
-        c_new = c + vc
-
-        # check if move is valid
-        if is_valid_position(grid, r_new, c_new, size):
-            obs["pos"] = [r_new, c_new]
-        else:
-            # bounce if blocked
-            obs["vel"][0] *= -1
-            obs["vel"][1] *= -1
-            
+from utils import update_obstacles            
             
 # =========================
 # MAIN FUNCTIONS
@@ -159,7 +125,13 @@ def RRT_tester(map_name):
     # =========================
     # Setup dynamics
     # =========================
-    dynamics_model = RobotDynamics(map=m)
+    dynamics_model = RobotDynamics()
+    dynamics_model.grid = grid
+
+    dynamics_model.static_obstacles = m.static_obstacles
+    dynamics_model.dynamic_obstacles = m.dynamic_obstacles
+    print("STATIC OBSTACLES:", dynamics_model.static_obstacles)
+    print("COUNT:", len(dynamics_model.static_obstacles))
 
     # =========================
     # Convert start/goal to State
@@ -203,81 +175,10 @@ def RRT_tester(map_name):
 
     plt.show()
 
-
-def run_simulation(map_name):
-    # load map
-    m = get_map(map_name)
-    grid = m.grid
-
-    dynamics_model = RobotDynamics(map=m)
-    dynamic_obstacles = dynamics_model.dynamic_obstacles
-
-    start = State(m.start[1], m.start[0], 0)
-    goal = State(m.goals[0][1], m.goals[0][0], 0)
-    name = m.name
-
-    # =========================
-    # Visualization setup
-    # =========================
-    plt.ion()
-    fig, ax = plt.subplots()
-
-    while True:
-        ax.clear()
-
-        # =========================
-        # 1. update dynamic obstacles
-        # =========================
-        update_obstacles(dynamic_obstacles, grid)
-
-        # =========================
-        # 2. create temp grid (for static + dynamic obstacles; does not modify original grid)
-        # =========================
-        temp_grid = grid.copy()
-
-        # =========================
-        # 3. stamp dynamic obstacles onto grid
-        # =========================
-        for obs in dynamic_obstacles:
-            r, c = obs["pos"]
-            size = obs["size"]
-
-            for i in range(size):
-                for j in range(size):
-                    temp_grid[r + i, c + j] = 1
-
-        # =========================
-        # 4. draw map (ALL obstacles = black)
-        # =========================
-        ax.imshow(1 - temp_grid, cmap='gray', origin='upper')
-
-        # =========================
-        # 5. draw start + goals
-        # =========================
-        ax.scatter(start[1], start[0], c='green', s=120, label='Start')
-        for goal in goals:
-            ax.scatter(goal[1], goal[0], c='red', s=120, label='Goal')
-
-        # =========================
-        # 6. formatting
-        # =========================
-        ax.set_title(name)
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-        # clean legend
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys())
-
-        plt.pause(0.2)
-
-
 # =========================
 # RUN HERE
 # =========================
 if __name__ == "__main__":
     # choose map: "map4" or "map5"
     # run_simulation("map1")
-    # RRT_tester("map4")
-    RRT_dynamic_test("map4")
+    RRT_tester("map4")

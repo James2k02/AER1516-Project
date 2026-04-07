@@ -6,16 +6,14 @@ The maps can be easily modified or extended by changing the grid layout and obst
 
 from matplotlib.pyplot import grid
 import numpy as np
-from typing import List, Tuple, Optional
-from config import CELL_SIZE
-from scipy.ndimage import label
-
+from dynamics import RobotDynamics
+from dynamics import State
 
 # =========================
 # Map class
 # =========================
 class Map:
-    def __init__(self, grid, start, goals, name, cell_size=CELL_SIZE, dynamic_obstacles=None):
+    def __init__(self, grid, start, goals, name, static_obstacles=None, dynamic_obstacles=None): # goals is a list of (x, y) tuples
         self.grid = grid
         self.cell_size = cell_size
         self.dimensions = grid.shape # outputs (row dim, col dim) --> (height, width)
@@ -102,15 +100,118 @@ class Map:
         return clusters
     
 
+        self.static_obstacles = static_obstacles if static_obstacles is not None else []
+        self.dynamic_obstacles = dynamic_obstacles if dynamic_obstacles is not None else []
+
+
+class Obstacle:
+    """
+    Base obstacle class (geometry only).
+    """
+
+    def __init__(self, x, y, w, h):
+        self.x = x  # column
+        self.y = y  # row
+        self.w = w
+        self.h = h
+
+    # =========================
+    # Geometry
+    # =========================
+    def get_rect(self):
+        return (self.x, self.y, self.w, self.h)
+
+    def collides_with_point(self, px, py, radius=0.0):
+        """
+        Collision check with circular robot via rectangle inflation.
+        """
+        return (
+            self.x - radius <= px <= self.x + self.w + radius and
+            self.y - radius <= py <= self.y + self.h + radius
+        )
+
+    def __repr__(self):
+        return f"Obstacle(x={self.x}, y={self.y}, w={self.w}, h={self.h})"
+    
+class StaticObstacle(Obstacle):
+    """
+    Static rectangular obstacle.
+    """
+
+    def __init__(self, x, y, w, h):
+        super().__init__(x, y, w, h)
+
+class DynamicObstacle(Obstacle):
+    """
+    Dynamic obstacle (square only) with velocity.
+    """
+
+    def __init__(self, x, y, size, vel=(0, 0)):
+        super().__init__(x, y, size, size)
+
+        self.size = size
+        self.vel = list(vel)
+
+        # store initial position for prediction
+        self.initial_pos = (x, y)
+
+    # =========================
+    # Motion
+    # =========================
+    def update(self, grid):
+        """
+        Move obstacle with bounce logic.
+        """
+        vx, vy = self.vel
+
+        new_x = self.x + vx
+        new_y = self.y + vy
+
+        if self._valid_position(grid, new_x, new_y):
+            self.x = new_x
+            self.y = new_y
+        else:
+            # bounce
+            self.vel[0] *= -1
+            self.vel[1] *= -1
+
+    def _valid_position(self, grid, x, y):
+        for i in range(int(self.h)):
+            for j in range(int(self.w)):
+                r = int(y + i)
+                c = int(x + j)
+
+                if r < 0 or r >= grid.shape[0] or c < 0 or c >= grid.shape[1]:
+                    return False
+
+                if grid[r, c] == 1:
+                    return False
+
+        return True
+
+    def get_position_at_time(self, t):
+        """
+        Predict position at time t (for planning).
+        NOTE: simple linear model (no bounce prediction yet)
+        """
+        x = self.initial_pos[0] + self.vel[0] * t
+        y = self.initial_pos[1] + self.vel[1] * t
+
+        return DynamicObstacle(x, y, self.size, self.vel)
+
+    def __repr__(self):
+        return f"DynamicObstacle(x={self.x}, y={self.y}, size={self.size}, vel={self.vel})"
+
 # =========================
 # Helper: add walls
 # =========================
-def add_boundaries(grid):
-    grid[0, :] = 1 # first row all columns
-    grid[-1, :] = 1 # last row all columns
-    grid[:, 0] = 1 # first column all rows
-    grid[:, -1] = 1 # last column all rows
-    return grid
+def create_boundary_obstacles(rows, cols):
+    return [
+        StaticObstacle(0, 0, cols, 1),
+        StaticObstacle(0, rows - 1, cols, 1),
+        StaticObstacle(0, 0, 1, rows),
+        StaticObstacle(cols - 1, 0, 1, rows),
+    ]
 
 '''
 Note: the map is 20x20 but the interior is 18x18 becasue of the boundaries. A lot of Activate maps also have boundaries so you're not too close to the walls
@@ -121,147 +222,139 @@ Note: the map is 20x20 but the interior is 18x18 becasue of the boundaries. A lo
 # =========================
 def simple():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    # simple obstacles
-    grid[6:10, 5:8] = 1
-    grid[12:15, 2:4] = 1
-    grid[13:16, 11:14] = 1
-    grid[2:5, 12:15] = 1
-    grid[7:11, 15:17] = 1
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
+        StaticObstacle(5, 6, 3, 4),
+        StaticObstacle(2, 12, 2, 3),
+        StaticObstacle(11, 13, 3, 3),
+        StaticObstacle(12, 2, 3, 3),
+        StaticObstacle(15, 7, 2, 4),
+    ]
+
+    dynamic_obstacles = []
 
     start = (2, 2)
     goals = [(18, 18), (16, 5)]  # list of goals, can add more later
 
-    return Map(grid, start, goals, "Simple Map")
+    return Map(grid, start, goals, "Simple Map", static_obstacles, dynamic_obstacles)
 
 # =========================
 # Map 2: Static Map (narrow passage)
 # =========================
 def narrow_passage():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    # horizontal wall 1
-    grid[4:6, :] = 1
-    
-    # narrow gap in wall 1
-    grid[4:6, 15:16] = 0
-    
-    # horizontal wall 2
-    grid[9:10, :] = 1
-    
-    # horizontal wall 3
-    grid[13:15, :] = 1
-    
-    # narrow gap in wall 3
-    grid[13:15, 6:7] = 0
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
+        # wall 1 (left + right of gap)
+        StaticObstacle(0, 4, 15, 2),
+        StaticObstacle(16, 4, 4, 2),
+
+        # wall 2 (full)
+        StaticObstacle(0, 9, 20, 1),
+
+        # wall 3 (left + right of gap)
+        StaticObstacle(0, 13, 6, 2),
+        StaticObstacle(7, 13, 13, 2),
+    ]
+
+    dynamic_obstacles = []
 
     start = (2, 2)
     goals = [(17, 17)]
 
-    return Map(grid, start, goals, "Narrow Passage Map w/ Jump")
+    return Map(grid, start, goals, "Narrow Passage Map w/ Jump", static_obstacles, dynamic_obstacles)
 
 # =========================
 # Map 3: Static Map (multi-passage)
 # =========================
 def multi_passage():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    # horizontal barriers
-    grid[4:5, :] = 1
-    grid[8:9, :] = 1
-    grid[12:13, :] = 1
-    grid[16:17, :] = 1
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
+        # y = 4
+        StaticObstacle(0, 4, 2, 1),
+        StaticObstacle(3, 4, 9, 1),
+        StaticObstacle(13, 4, 7, 1),
 
-    # openings (different routes)
-    grid[4:5, 2:3] = 0
-    grid[4:5, 12:13] = 0
-    
-    grid[8:9, 6:7] = 0
-    grid[8:9, 16:17] = 0
-      
-    grid[12:13, 3:4] = 0
-    grid[12:13, 7:8] = 0
-    grid[12:13, 12:13] = 0
-    
-    grid[16:17, 1:2] = 0
-    grid[16:17, 7:8] = 0
-    grid[16:17, 15:16] = 0
+        # y = 8
+        StaticObstacle(0, 8, 6, 1),
+        StaticObstacle(7, 8, 9, 1),
+        StaticObstacle(17, 8, 3, 1),
+
+        # y = 12
+        StaticObstacle(0, 12, 3, 1),
+        Obstacle(4, 12, 3, 1),
+        StaticObstacle(8, 12, 4, 1),
+        StaticObstacle(13, 12, 7, 1),
+
+        # y = 16
+        StaticObstacle(0, 16, 1, 1),
+        StaticObstacle(2, 16, 5, 1),
+        StaticObstacle(8, 16, 7, 1),
+        StaticObstacle(16, 16, 4, 1),
+    ]
+
+    dynamic_obstacles = []
 
     start = (2, 9)
     goals = [(18, 8)]
 
-    return Map(grid, start, goals, "Multi Route Map")
+    return Map(grid, start, goals, "Multi Route Map", static_obstacles, dynamic_obstacles)
 
 # =========================
-# Map 4: Simple Dynamic Map (one moving obstacle)
+# Map 4: Simple Dynamic Map (two moving obstacles)
 # =========================
 def simple_dynamic():
-    import numpy as np
-
     grid = np.zeros((20, 20))
 
-    # boundaries
-    grid[0, :] = 1
-    grid[-1, :] = 1
-    grid[:, 0] = 1
-    grid[:, -1] = 1
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + []
+
+    dynamic_obstacles = [
+        DynamicObstacle(2, 3, 2, vel=(1, 0)),
+    ]
 
     start = (2, 7)
     goals = [(18, 18)]
 
-    dynamic_obstacles = [
-        {"initial_pos": [3, 2],  "pos": [3, 2],  "size": 2, "vel": [0,  1]},
-        {"initial_pos": [7, 12], "pos": [7, 12], "size": 2, "vel": [0,  1]},
-        {"initial_pos": [11, 8], "pos": [11, 8], "size": 2, "vel": [0, -1]},
-        {"initial_pos": [15, 5], "pos": [15, 5], "size": 2, "vel": [0, -1]},
-    ]
-
-    return Map(grid, start, goals, "Simple Dynamic Map", dynamic_obstacles=dynamic_obstacles)
+    return Map(grid, start, goals, "Simple Dynamic Map", static_obstacles, dynamic_obstacles)
 
 # =========================
 # Map 5: Hard Dynamic Map (multiple moving obstacles)
 # =========================
 def hard_dynamic():
-    import numpy as np
-
     grid = np.zeros((20, 20))
 
-    # boundaries
-    grid[0, :] = 1
-    grid[-1, :] = 1
-    grid[:, 0] = 1
-    grid[:, -1] = 1
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
+        # central wall (split for gaps)
+        StaticObstacle(9, 4, 2, 3),
+        StaticObstacle(9, 9, 2, 2),
 
-    # central vertical wall
-    grid[4:16, 9:11] = 1
+        # clutter
+        StaticObstacle(3, 2, 3, 2),
+        StaticObstacle(14, 5, 3, 2),
+        StaticObstacle(3, 10, 2, 2),
+        StaticObstacle(5, 14, 3, 3),
+        StaticObstacle(12, 15, 3, 3),
+        StaticObstacle(16, 12, 3, 2),
+    ]
 
-    # gaps
-    grid[7:9, 9:11] = 0
-    grid[11:16, 9:11] = 0
-
-    # more clutter blocks
-    grid[2:4, 3:6] = 1
-    grid[5:7, 14:17] = 1
-    grid[10:12, 3:5] = 1
-    grid[14:17, 5:8] = 1
-    grid[15:18, 12:15] = 1
-    grid[12:14, 16:19] = 1
+    dynamic_obstacles = [
+        DynamicObstacle(1, 5, 2, vel=(0, 1)),
+        DynamicObstacle(9, 15, 2, vel=(0, -1)),
+        DynamicObstacle(11, 10, 2, vel=(1, 0)),
+        DynamicObstacle(14, 7, 2, vel=(-1, 0)),
+        DynamicObstacle(12, 12, 2, vel=(0, 1)),
+    ]
 
     start = (1, 5)
     goals = [(18, 18)]
 
-    dynamic_obstacles = [
-        {"initial_pos": [5,  1],  "pos": [5,  1],  "size": 2, "vel": [ 1, 0]},
-        {"initial_pos": [15, 9],  "pos": [15, 9],  "size": 2, "vel": [-1, 0]},
-        {"initial_pos": [10, 11], "pos": [10, 11], "size": 2, "vel": [0,  1]},
-        {"initial_pos": [7,  14], "pos": [7,  14], "size": 2, "vel": [0, -1]},
-        {"initial_pos": [12, 12], "pos": [12, 12], "size": 2, "vel": [ 1, 0]},
-    ]
-
-    return Map(grid, start, goals, "Hard Dynamic Map", dynamic_obstacles=dynamic_obstacles)
+    return Map(grid, start, goals, "Hard Dynamic Map", static_obstacles, dynamic_obstacles)
 
 # =========================
 # Map loader
