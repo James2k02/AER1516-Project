@@ -74,6 +74,7 @@ class DynamicObstacle(Obstacle):
 
         # store initial position for prediction
         self.initial_pos = (x, y)
+        self.initial_vel = list(vel)
 
     # =========================
     # Motion
@@ -118,6 +119,14 @@ class DynamicObstacle(Obstacle):
         y = self.initial_pos[1] + self.vel[1] * t
 
         return DynamicObstacle(x, y, self.size, self.vel)
+    
+    def reset_dynamic_obstacle(self):
+        """
+        Reset obstacle to its initial position and velocity.
+        """
+        self.x = self.initial_pos[0]
+        self.y = self.initial_pos[1]
+        self.vel = list(self.initial_vel)
 
     def __repr__(self):
         return f"DynamicObstacle(x={self.x}, y={self.y}, size={self.size}, vel={self.vel})"
@@ -234,7 +243,7 @@ def simple_dynamic():
     static_obstacles = create_boundary_obstacles(20, 20) + []
 
     dynamic_obstacles = [
-        DynamicObstacle(2, 3, 2, vel=(1, 0)),
+        DynamicObstacle(2, 3, 2, vel=(0.2, 0)),
     ]
 
     start = (2, 7)
@@ -264,11 +273,11 @@ def hard_dynamic():
     ]
 
     dynamic_obstacles = [
-        DynamicObstacle(1, 5, 2, vel=(0, 1)),
-        DynamicObstacle(9, 15, 2, vel=(0, -1)),
-        DynamicObstacle(11, 10, 2, vel=(1, 0)),
-        DynamicObstacle(14, 7, 2, vel=(-1, 0)),
-        DynamicObstacle(12, 12, 2, vel=(0, 1)),
+        DynamicObstacle(1, 5, 2, vel=(0, 0.1)),
+        DynamicObstacle(9, 15, 2, vel=(0, -0.1)),
+        DynamicObstacle(11, 10, 2, vel=(0.1, 0)),
+        DynamicObstacle(14, 7, 2, vel=(-0.1, 0)),
+        DynamicObstacle(12, 12, 2, vel=(0, 0.1)),
     ]
 
     start = (1, 5)
