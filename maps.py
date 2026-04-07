@@ -63,10 +63,7 @@ class Map:
     def is_in_bounds(self, row: int, col: int) -> bool:
         """Check if a grid cell (row, col) is within the map boundaries."""
         return (0 <= row < self.dimensions[0]) and (0 <= col < self.dimensions[1])
-    
-    def is_dynamic(self) -> bool:
-        
-    
+
     
     def get_obstacle_clusters(self) -> list[dict]:
         """
