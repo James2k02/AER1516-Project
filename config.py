@@ -10,3 +10,9 @@ TIME_LIMITS = {
     'simple_dynamic': 60,
     'hard_dynamic': 60,
 }
+
+CELL_SIZE = 0.20 # Meters
+GOAL_SAMPLE_RATE = 0.1  # 10%
+GOAL_SUCCESS_THRESH = 0.1 # Meters
+
+MAX_RRT_ITERATION = 5000
