@@ -701,6 +701,38 @@ def visualize_rrt(ax, tree, path=None):
         ys = [s.y for s in path]
         ax.plot(xs, ys, color='yellow', linewidth=2, label='Path')
 
+def rrt_step(tree, goal, map_info, dynamics_model, step_size, goal_threshold, p_goal_bias):
+    rows, cols = map_info.dimensions
+    map_bounds = (0, cols, 0, rows)
+
+    # 1. Sample
+    q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
+
+    # 2. Nearest
+    q_nearest_node = nearest_node(tree, q_rand)
+
+    # 3. Steer
+    trajectory = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
+    if trajectory is None:
+        return None, False
+
+    # 4. Collision
+    if not is_collision_free_trajectory(trajectory, dynamics_model):
+        return None, False
+
+    # 5. Add node
+    x, y, theta = trajectory[-1]
+    q_new = State(x, y, theta)
+
+    new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
+    new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
+
+    # 6. Goal check
+    if is_goal_reached(q_new, goal, goal_threshold):
+        return new_node, True
+
+    return new_node, False
+
 def plan_rrt(start, goal, map: Map, dynamics_model, ax=None, max_iterations=MAX_RRT_ITERATION,
               max_time=60.0, step_size=1.0, goal_threshold=GOAL_SUCCESS_THRESH, p_goal_bias=GOAL_SAMPLE_RATE, do_visuals=True):
     """
@@ -728,7 +760,7 @@ def plan_rrt(start, goal, map: Map, dynamics_model, ax=None, max_iterations=MAX_
     # Extract map info
     grid = map.grid
     map_x_bounds = (0,map.width)
-    map_y_bounds = (0,map.width)
+    map_y_bounds = (0,map.height)
 
     while iterations < max_iterations:
         # Check time budget

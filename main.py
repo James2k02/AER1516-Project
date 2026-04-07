@@ -10,14 +10,11 @@ from maps import get_map
 from dynamics import RobotDynamics
 from dynamics import State
 from path_planner import plan_rrt
-<<<<<<< HEAD
 from path_planner import grid_to_obstacles
 from path_planner import rrt_step
 from path_planner import visualize_rrt
 from path_planner import extract_path
 from path_planner import RRTTree
-=======
->>>>>>> origin/develop
 
 # =========================
 # Checking if a position is valid for the obstacle to move into (no walls, within bounds)
@@ -215,8 +212,8 @@ def run_simulation(map_name):
     dynamics_model = RobotDynamics(map=m)
     dynamic_obstacles = dynamics_model.dynamic_obstacles
 
-    start = State(m.start[0], m.start[1], 0)
-    goal = State(m.goals[0][0], m.goals[0][1], 0)
+    start = State(m.start[1], m.start[0], 0)
+    goal = State(m.goals[0][1], m.goals[0][0], 0)
     name = m.name
 
     # =========================
