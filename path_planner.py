@@ -456,50 +456,6 @@ def nearest_node(tree: RRTTree, config: State) -> TreeNode:
 # TODO 4: STEERING / LOCAL EDGE INTERPOLATION
 # ============================================================================
 
-'''
-def steer(start: State, target: State, step_size: float, dynamics_model):
-    """
-    Steer from start toward target using bounded step size.
-    Returns a small trajectory (Nx3 array).
-    """
-
-    dx = target.x - start.x
-    dy = target.y - start.y
-
-    dist = math.sqrt(dx*dx + dy*dy)
-
-    if dist == 0:
-        return None
-
-    # Limit movement to step_size
-    step = min(step_size, dist)
-
-    # Unit direction
-    ux = dx / dist
-    uy = dy / dist
-
-    # New target point (bounded)
-    new_x = start.x + step * ux
-    new_y = start.y + step * uy
-
-    # Orientation toward motion direction
-    new_theta = math.atan2(uy, ux)
-
-    # Create simple straight-line trajectory
-    num_points = 10
-    trajectory = np.zeros((num_points, 3))
-
-    for i in range(num_points):
-        t = (i + 1) / num_points
-        x = start.x + t * (new_x - start.x)
-        y = start.y + t * (new_y - start.y)
-        theta = new_theta
-
-        trajectory[i] = [x, y, theta]
-
-    return trajectory
-'''
-
 def steer(start: State, target: State, step_size: float, dynamics_model):
     """
     Steer from start toward target, moving at most step_size distance.
@@ -621,7 +577,8 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
 
         # 1. Static obstacles check
         for obs in dynamics_model.static_obstacles:
-            inflated_obs = inflate_rectangle(obs, radius)
+            rect = obs.get_rect()
+            inflated_obs = inflate_rectangle(rect, radius)
             if point_in_rectangle((x, y), inflated_obs):
                 return False
             
@@ -832,20 +789,6 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
     planning_time = time.time() - start_time
     print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
     return None
-
-# ============================================================================
-# HELPER FUNCTION --> Grid to obstacle conversion (for collision checking)
-# ============================================================================
-def grid_to_obstacles(grid):
-    obstacles = []
-    rows, cols = grid.shape
-
-    for r in range(rows):
-        for c in range(cols):
-            if grid[r, c] == 1:
-                obstacles.append((c, r, 1, 1))  # (x, y, w, h)
-
-    return obstacles
 
 # ============================================================================
 # TODO 13: MAIN RRT* PLANNING LOOP
