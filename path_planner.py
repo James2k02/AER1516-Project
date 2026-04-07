@@ -509,42 +509,6 @@ def steer(start: State, target: State, step_size: float, dynamics_model):
 # TODO 5: COLLISION CHECKING
 # ============================================================================
 
-def inflate_rectangle(rect, radius):
-    """
-    Inflate rectangle by robot radius.
-
-    Args:
-        rect: (x, y, w, h)
-        radius: robot radius
-
-    Returns:
-        inflated rectangle (x, y, w, h)
-    """
-    rx, ry, w, h = rect
-
-    return (
-        rx - radius,
-        ry - radius,
-        w + 2 * radius,
-        h + 2 * radius
-    )
-
-def point_in_rectangle(point: Tuple[float, float], rect: Tuple[float, float, float, float]):
-    """
-    Check if a point is inside an axis-aligned rectangle.
-
-    Args:
-        point: (x, y)
-        rect: (x_min, y_min, width, height)
-
-    Returns:
-        True if inside rectangle, False otherwise
-    """
-    px, py = point
-    rx, ry, w, h = rect
-
-    return (rx <= px <= rx + w) and (ry <= py <= ry + h)
-
 def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
     """
     Check if path from start to end is collision-free.
@@ -562,10 +526,10 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
     """
     # TODO: Implement collision checking
 
-    radius = dynamics_model.robot_radius
-
-    if len(trajectory) == 0:
+    if trajectory is None or len(trajectory) == 0:
         return False
+
+    radius = dynamics_model.robot_radius
     dt = 1.0 / len(trajectory)
 
     for i, point in enumerate(trajectory):
@@ -573,22 +537,16 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
 
         t = t_start + i*dt
 
-        # print(f"full static obstacles = {dynamics_model.static_obstacles}")
-
         # 1. Static obstacles check
         for obs in dynamics_model.static_obstacles:
-            rect = obs.get_rect()
-            inflated_obs = inflate_rectangle(rect, radius)
-            if point_in_rectangle((x, y), inflated_obs):
+            if obs.collides_with_point(x, y, radius):
                 return False
             
         # 2. Dynamic obstacles check
-        for obs_id in range(len(dynamics_model.dynamic_obstacles)):
-            obs_rect = dynamics_model.obstacle_position_at_time(obs_id, t)
-
-            inflated_obs = inflate_rectangle(obs_rect, radius)
-            if point_in_rectangle((x, y), inflated_obs):
-                return False        
+        for obs in dynamics_model.dynamic_obstacles:
+            obs_t = obs.get_position_at_time(t)
+            if obs_t.collides_with_point(x, y, radius):
+                return False
 
     return True
 
@@ -763,7 +721,33 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
                 ax.clear()
 
                 grid = map_info.grid
-                ax.imshow(1 - grid, cmap='gray', origin='upper')
+                ax.set_facecolor('white')
+
+                # =========================
+                # Draw static obstacles
+                # =========================
+                for obs in dynamics_model.static_obstacles:
+                    rect = plt.Rectangle(
+                        (obs.x, obs.y),
+                        obs.w,
+                        obs.h,
+                        edgecolor='black',
+                        facecolor='black'
+                    )
+                    ax.add_patch(rect)
+
+                # =========================
+                # Draw dynamic obstacles (optional)
+                # =========================
+                for obs in dynamics_model.dynamic_obstacles:
+                    rect = plt.Rectangle(
+                        (obs.x, obs.y),
+                        obs.w,
+                        obs.h,
+                        edgecolor='red',
+                        facecolor='red'
+                    )
+                    ax.add_patch(rect)
 
                 visualize_rrt(ax, tree)
 

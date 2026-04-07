@@ -125,12 +125,13 @@ class DynamicObstacle(Obstacle):
 # =========================
 # Helper: add walls
 # =========================
-def add_boundaries(grid):
-    grid[0, :] = 1 # first row all columns
-    grid[-1, :] = 1 # last row all columns
-    grid[:, 0] = 1 # first column all rows
-    grid[:, -1] = 1 # last column all rows
-    return grid
+def create_boundary_obstacles(rows, cols):
+    return [
+        StaticObstacle(0, 0, cols, 1),
+        StaticObstacle(0, rows - 1, cols, 1),
+        StaticObstacle(0, 0, 1, rows),
+        StaticObstacle(cols - 1, 0, 1, rows),
+    ]
 
 '''
 Note: the map is 20x20 but the interior is 18x18 becasue of the boundaries. A lot of Activate maps also have boundaries so you're not too close to the walls
@@ -141,10 +142,9 @@ Note: the map is 20x20 but the interior is 18x18 becasue of the boundaries. A lo
 # =========================
 def simple():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
     # simple obstacles - (x, y, w, h)
-    static_obstacles = [
+    static_obstacles = create_boundary_obstacles(20, 20) + [
         StaticObstacle(5, 6, 3, 4),
         StaticObstacle(2, 12, 2, 3),
         StaticObstacle(11, 13, 3, 3),
@@ -164,9 +164,9 @@ def simple():
 # =========================
 def narrow_passage():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    static_obstacles = [
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
         # wall 1 (left + right of gap)
         StaticObstacle(0, 4, 15, 2),
         StaticObstacle(16, 4, 4, 2),
@@ -191,9 +191,9 @@ def narrow_passage():
 # =========================
 def multi_passage():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    static_obstacles = [
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
         # y = 4
         StaticObstacle(0, 4, 2, 1),
         StaticObstacle(3, 4, 9, 1),
@@ -229,9 +229,9 @@ def multi_passage():
 # =========================
 def simple_dynamic():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    static_obstacles = []
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + []
 
     dynamic_obstacles = [
         DynamicObstacle(2, 3, 2, vel=(1, 0)),
@@ -247,9 +247,9 @@ def simple_dynamic():
 # =========================
 def hard_dynamic():
     grid = np.zeros((20, 20))
-    grid = add_boundaries(grid)
 
-    static_obstacles = [
+    # simple obstacles - (x, y, w, h)
+    static_obstacles = create_boundary_obstacles(20, 20) + [
         # central wall (split for gaps)
         StaticObstacle(9, 4, 2, 3),
         StaticObstacle(9, 9, 2, 2),
