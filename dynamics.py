@@ -1,7 +1,6 @@
 from typing import List, Tuple, NamedTuple
 import math
-import numpy as np
- 
+import numpy as np 
  
 class State(NamedTuple):
     """

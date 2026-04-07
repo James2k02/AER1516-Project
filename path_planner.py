@@ -456,50 +456,6 @@ def nearest_node(tree: RRTTree, config: State) -> TreeNode:
 # TODO 4: STEERING / LOCAL EDGE INTERPOLATION
 # ============================================================================
 
-'''
-def steer(start: State, target: State, step_size: float, dynamics_model):
-    """
-    Steer from start toward target using bounded step size.
-    Returns a small trajectory (Nx3 array).
-    """
-
-    dx = target.x - start.x
-    dy = target.y - start.y
-
-    dist = math.sqrt(dx*dx + dy*dy)
-
-    if dist == 0:
-        return None
-
-    # Limit movement to step_size
-    step = min(step_size, dist)
-
-    # Unit direction
-    ux = dx / dist
-    uy = dy / dist
-
-    # New target point (bounded)
-    new_x = start.x + step * ux
-    new_y = start.y + step * uy
-
-    # Orientation toward motion direction
-    new_theta = math.atan2(uy, ux)
-
-    # Create simple straight-line trajectory
-    num_points = 10
-    trajectory = np.zeros((num_points, 3))
-
-    for i in range(num_points):
-        t = (i + 1) / num_points
-        x = start.x + t * (new_x - start.x)
-        y = start.y + t * (new_y - start.y)
-        theta = new_theta
-
-        trajectory[i] = [x, y, theta]
-
-    return trajectory
-'''
-
 def steer(start: State, target: State, step_size: float, dynamics_model):
     """
     Steer from start toward target, moving at most step_size distance.
@@ -740,7 +696,39 @@ def visualize_rrt(ax, tree, path=None):
         ys = [s.y for s in path]
         ax.plot(xs, ys, color='yellow', linewidth=2, label='Path')
 
-def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000, max_time=60.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05):
+def rrt_step(tree, goal, map_info, dynamics_model, step_size, goal_threshold, p_goal_bias):
+    rows, cols = map_info.dimensions
+    map_bounds = (0, cols, 0, rows)
+
+    # 1. Sample
+    q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
+
+    # 2. Nearest
+    q_nearest_node = nearest_node(tree, q_rand)
+
+    # 3. Steer
+    trajectory = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
+    if trajectory is None:
+        return None, False
+
+    # 4. Collision
+    if not is_collision_free_trajectory(trajectory, dynamics_model):
+        return None, False
+
+    # 5. Add node
+    x, y, theta = trajectory[-1]
+    q_new = State(x, y, theta)
+
+    new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
+    new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
+
+    # 6. Goal check
+    if is_goal_reached(q_new, goal, goal_threshold):
+        return new_node, True
+
+    return new_node, False
+
+def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=50000, max_time=600.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05):
     """
     Main RRT planning function.
     
