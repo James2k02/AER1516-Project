@@ -6,18 +6,101 @@ The maps can be easily modified or extended by changing the grid layout and obst
 
 from matplotlib.pyplot import grid
 import numpy as np
+from typing import List, Tuple, Optional
+from config import CELL_SIZE
+from scipy.ndimage import label
+
 
 # =========================
 # Map class
 # =========================
 class Map:
-    def __init__(self, grid, start, goals, name): # goals is a list of (x, y) tuples
+    def __init__(self, grid, start, goals, name, cell_size=CELL_SIZE, dynamic_obstacles=None):
         self.grid = grid
-        self.dimensions = grid.shape # outputs (rows, cols) --> (height, width)
+        self.cell_size = cell_size
+        self.dimensions = grid.shape # outputs (row dim, col dim) --> (height, width)
         self.start = start
         self.goals = goals
         self.name = name
-        self.dynamic_obstacles = []
+        self.dynamic_obstacles = dynamic_obstacles if dynamic_obstacles is not None else []
+    
+    @property
+    def width(self) -> float:
+        """Width of the map in meters (columns)."""
+        return self.dimensions[1] * self.cell_size
+
+    @property
+    def height(self) -> float:
+        """Height of the map in meters (rows)."""
+        return self.dimensions[0] * self.cell_size
+    
+    def get_obstacles_grid_position(self) -> list[tuple[int, int]]:
+        """Return list of (row, col) of all obstacle cells."""
+        rows, cols = np.nonzero(self.grid == 1)
+        return list(zip(rows, cols))
+    
+    def meters_to_grid(self, x_m: float, y_m: float) -> tuple[int, int]:
+        """
+        Convert a position in meters to a grid cell (row, col).
+        Returns:
+            (row, col) grid cell indices
+        """
+        col = int(x_m / self.cell_size)
+        row = int(y_m / self.cell_size)
+        return (row, col)
+    
+    def grid_to_meters(self, row: int, col: int) -> tuple[float, float]:
+        """
+        Convert a grid cell (row, col) to its center position in meters.
+        Returns:
+            (x_m, y_m) position of the cell center
+        """
+        x_m = (col + 0.5) * self.cell_size
+        y_m = (row + 0.5) * self.cell_size
+        return (x_m, y_m)
+    
+    
+    def is_in_bounds(self, row: int, col: int) -> bool:
+        """Check if a grid cell (row, col) is within the map boundaries."""
+        return (0 <= row < self.dimensions[0]) and (0 <= col < self.dimensions[1])
+
+    
+    def get_obstacle_clusters(self) -> list[dict]:
+        """
+        Detect connected clusters of obstacle cells using flood fill,
+        and return their bounding boxes in both cells and meters.
+
+        Returns list of dicts with keys:
+            cells                               - list of (row, col) in the cluster
+            min_row, max_row, min_col, max_col  - bounding box in cells
+            x_min, x_max, y_min, y_max          - bounding box in meters
+            width_m, height_m                   - size in meters
+        """
+
+        labeled, num_clusters = label(self.grid == 1)
+        clusters = []
+
+        for i in range(1, num_clusters + 1):
+            rows, cols = np.where(labeled == i)
+            min_row, max_row = int(rows.min()), int(rows.max())
+            min_col, max_col = int(cols.min()), int(cols.max())
+
+            clusters.append({
+                "cells":    list(zip(rows.tolist(), cols.tolist())),
+                # cell-space bounding box
+                "min_row":  min_row,
+                "max_row":  max_row,
+                "min_col":  min_col,
+                "max_col":  max_col,
+                # meter-space bounding box
+                "x_min":    min_col * self.cell_size,
+                "x_max":    (max_col + 1) * self.cell_size,
+                "y_min":    min_row * self.cell_size,
+                "y_max":    (max_row + 1) * self.cell_size,
+            })
+
+        return clusters
+    
 
 # =========================
 # Helper: add walls
@@ -129,7 +212,14 @@ def simple_dynamic():
     start = (2, 7)
     goals = [(18, 18)]
 
-    return Map(grid, start, goals, "Simple Dynamic Map")
+    dynamic_obstacles = [
+        {"initial_pos": [3, 2],  "pos": [3, 2],  "size": 2, "vel": [0,  1]},
+        {"initial_pos": [7, 12], "pos": [7, 12], "size": 2, "vel": [0,  1]},
+        {"initial_pos": [11, 8], "pos": [11, 8], "size": 2, "vel": [0, -1]},
+        {"initial_pos": [15, 5], "pos": [15, 5], "size": 2, "vel": [0, -1]},
+    ]
+
+    return Map(grid, start, goals, "Simple Dynamic Map", dynamic_obstacles=dynamic_obstacles)
 
 # =========================
 # Map 5: Hard Dynamic Map (multiple moving obstacles)
@@ -163,7 +253,15 @@ def hard_dynamic():
     start = (1, 5)
     goals = [(18, 18)]
 
-    return Map(grid, start, goals, "Hard Dynamic Map")
+    dynamic_obstacles = [
+        {"initial_pos": [5,  1],  "pos": [5,  1],  "size": 2, "vel": [ 1, 0]},
+        {"initial_pos": [15, 9],  "pos": [15, 9],  "size": 2, "vel": [-1, 0]},
+        {"initial_pos": [10, 11], "pos": [10, 11], "size": 2, "vel": [0,  1]},
+        {"initial_pos": [7,  14], "pos": [7,  14], "size": 2, "vel": [0, -1]},
+        {"initial_pos": [12, 12], "pos": [12, 12], "size": 2, "vel": [ 1, 0]},
+    ]
+
+    return Map(grid, start, goals, "Hard Dynamic Map", dynamic_obstacles=dynamic_obstacles)
 
 # =========================
 # Map loader
@@ -181,3 +279,14 @@ def get_map(name):
     if name not in MAPS:
         raise ValueError(f"Map '{name}' not found")
     return MAPS[name]()
+
+
+def grid_to_obstacles(grid):
+    """Convert a numpy grid to a list of (x, y, w, h) obstacle rectangles (one per cell)."""
+    obstacles = []
+    rows, cols = grid.shape
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r, c] == 1:
+                obstacles.append((c, r, 1, 1))  # (x, y, w, h)
+    return obstacles
