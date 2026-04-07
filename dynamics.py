@@ -1,7 +1,6 @@
 from typing import List, Tuple, NamedTuple
 import math
 import numpy as np
-from maps import grid_to_obstacles
  
  
 class State(NamedTuple):
@@ -52,15 +51,14 @@ class RobotDynamics:
     Interface for plugging in custom robot dynamics.
     Dynamics team fills in the implementations.
     """
-    def __init__(self, map=None, max_vel=1.0, max_angular_vel=0.5, robot_radius=0.5):
+    def __init__(self, max_vel = 1.0, max_angular_vel = 0.5, robot_radius = 0.5):
         self.max_vel = max_vel
         self.max_angular_vel = max_angular_vel
         self.robot_radius = robot_radius
 
-        self.map = map
-        self.grid = map.grid if map is not None else None
-        self.static_obstacles = grid_to_obstacles(map.grid) if map is not None else []
-        self.dynamic_obstacles = map.dynamic_obstacles if map is not None else []
+        self.grid = None
+        self.static_obstacles = []
+        self.dynamic_obstacles = []
     
     def move_cost(self, state1: State, state2: State) -> float:
         """Cost (time) to move between two states."""
