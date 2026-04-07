@@ -309,7 +309,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dynamics import State
 from maps import Map
-from config import GOAL_SAMPLE_RATE
+from config import GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -646,10 +646,10 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
 
 
 # ============================================================================
-# TODO 6: EDGE COST COMPUTATION
+# EDGE COST COMPUTATION
 # ============================================================================
 
-def edge_cost(s1: State, s2: State, dynamics_model=None) -> float:
+def edge_cost(s1: State, s2: State, dynamics_model) -> float:
     """
     Compute cost (time/distance) to traverse from s1 to s2.
     
@@ -661,9 +661,11 @@ def edge_cost(s1: State, s2: State, dynamics_model=None) -> float:
     Returns:
         Cost value
     """
-    # TODO: Implement cost computation
-    # For now, use Euclidean distance
-    return State.state_distance(s1, s2)
+    if dynamics_model is not None:
+        return dynamics_model.move_cost(s1,s2)
+    else: 
+        return float('inf')
+
 
 
 # ============================================================================
@@ -685,18 +687,12 @@ def rewire_neighbors(tree: RRTTree, new_node: TreeNode, radius: float, dynamics_
 
 
 # ============================================================================
-# TODO 8: GOAL DETECTION & TERMINATION
+# GOAL DETECTION & TERMINATION
 # ============================================================================
 
-def is_goal_reached(node_state: State, goal: State, threshold: float = 0.1) -> bool:
+def is_goal_reached(node_state: State, goal: State, threshold: float = GOAL_SUCCESS_THRESH) -> bool:
     """
     Check if node is within threshold distance of goal.
-    
-    Args:
-        node_state: Node state to check
-        goal: Goal state
-        threshold: Distance threshold
-    
     Returns:
         True if node is close enough to goal
     """
@@ -704,7 +700,7 @@ def is_goal_reached(node_state: State, goal: State, threshold: float = 0.1) -> b
 
 
 # ============================================================================
-# TODO 9: PATH EXTRACTION & RECONSTRUCTION
+# PATH EXTRACTION & RECONSTRUCTION
 # ============================================================================
 
 def extract_path(goal_node: TreeNode) -> List[State]:
@@ -749,7 +745,8 @@ def visualize_rrt(ax, tree, path=None):
         ys = [s.y for s in path]
         ax.plot(xs, ys, color='yellow', linewidth=2, label='Path')
 
-def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000, max_time=60.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05):
+def plan_rrt(start, goal, map: Map, dynamics_model, ax=None, max_iterations=MAX_RRT_ITERATION,
+              max_time=60.0, step_size=1.0, goal_threshold=GOAL_SUCCESS_THRESH, p_goal_bias=GOAL_SAMPLE_RATE, do_visuals=True):
     """
     Main RRT planning function.
     
@@ -774,10 +771,8 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
     
     # Extract map info
     grid = map.grid
-    (row_count,col_count) = map.dimensions
     map_x_bounds = (0,map.width)
     map_y_bounds = (0,map.width)
-    static_obstacles = map.get_obstacle_coordinates()
 
     while iterations < max_iterations:
         # Check time budget
@@ -813,15 +808,12 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
             new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
             new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
             
-            # =========================
-            # ALWAYS VISUALIZE
-            # =========================
-            if ax is not None and iterations % 20 == 0:
+            if do_visuals and (ax is not None) and (iterations % 20 == 0):
                 if iterations % 100 == 0:
                     print(f"Length of tree is: {tree.size()}")
                 ax.clear()
 
-                grid = map_info.grid
+                grid = map.grid
                 ax.imshow(1 - grid, cmap='gray', origin='upper')
 
                 visualize_rrt(ax, tree)
@@ -849,26 +841,11 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
     print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
     return None
 
-# ============================================================================
-# HELPER FUNCTION --> Grid to obstacle conversion (for collision checking)
-# ============================================================================
-
-#TODO : needs to changes
-def grid_to_obstacles(grid):
-    obstacles = []
-    rows, cols = grid.shape
-
-    for r in range(rows):
-        for c in range(cols):
-            if grid[r, c] == 1:
-                obstacles.append((c, r, 1, 1))  # (x, y, w, h)
-
-    return obstacles
 
 # ============================================================================
 # TODO 13: MAIN RRT* PLANNING LOOP
 # ============================================================================
-def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, 
+def plan_rrt_star(start: State, goal: State, map: Map, dynamics_model, 
                   max_iterations: int = 5000, max_time: float = 10.0, 
                   step_size: float = 1.0, goal_threshold: float = 0.5,
                   p_goal_bias: float = 0.05) -> Optional[List[State]]:
@@ -878,8 +855,9 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
     tree = RRTTree(start) # initialize tree with start node
 
     # Extract map info
-    rows, cols = map_info.dimensions
-    map_bounds = (0, cols, 0, rows)
+    grid = map.grid
+    map_x_bounds = (0,map.width)
+    map_y_bounds = (0,map.width)
 
     while iterations < max_iterations:
         # Time check
@@ -887,7 +865,10 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
             break
 
         # Step 1: Sample random configuration (with goal biasing))
-        q_rand = sample_random_state(map_bounds, goal = goal, p_goal = p_goal_bias)
+        q_rand = sample_random_state(map_x_bounds,map_y_bounds, goal = goal, p_goal = p_goal_bias)
+        # validate sample to be in bounds and not in an obstacle
+        if not is_state_valid(map,q_rand):
+            continue
 
         # Step 2: Find nearest node in tree
         q_nearest_node = nearest_node(tree, q_rand)

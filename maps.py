@@ -15,13 +15,14 @@ from scipy.ndimage import label
 # Map class
 # =========================
 class Map:
-    def __init__(self, grid, start, goals, name, cell_size=CELL_SIZE): # goals is a list of (x, y) tuples
+    def __init__(self, grid, start, goals, name, cell_size=CELL_SIZE, dynamic_obstacles=None):
         self.grid = grid
         self.cell_size = cell_size
         self.dimensions = grid.shape # outputs (row dim, col dim) --> (height, width)
         self.start = start
         self.goals = goals
         self.name = name
+        self.dynamic_obstacles = dynamic_obstacles if dynamic_obstacles is not None else []
     
     @property
     def width(self) -> float:
@@ -32,19 +33,15 @@ class Map:
     def height(self) -> float:
         """Height of the map in meters (rows)."""
         return self.dimensions[0] * self.cell_size
-
+    
     def get_obstacles_grid_position(self) -> list[tuple[int, int]]:
-        """Return (row, col) of all obstacle cells."""
+        """Return list of (row, col) of all obstacle cells."""
         rows, cols = np.nonzero(self.grid == 1)
         return list(zip(rows, cols))
     
     def meters_to_grid(self, x_m: float, y_m: float) -> tuple[int, int]:
         """
         Convert a position in meters to a grid cell (row, col).
-        
-        Args:
-            x_m: x position in meters (column direction)
-            y_m: y position in meters (row direction)
         Returns:
             (row, col) grid cell indices
         """
@@ -55,7 +52,6 @@ class Map:
     def grid_to_meters(self, row: int, col: int) -> tuple[float, float]:
         """
         Convert a grid cell (row, col) to its center position in meters.
-
         Returns:
             (x_m, y_m) position of the cell center
         """
@@ -63,9 +59,14 @@ class Map:
         y_m = (row + 0.5) * self.cell_size
         return (x_m, y_m)
     
+    
     def is_in_bounds(self, row: int, col: int) -> bool:
         """Check if a grid cell (row, col) is within the map boundaries."""
         return (0 <= row < self.dimensions[0]) and (0 <= col < self.dimensions[1])
+    
+    def is_dynamic(self) -> bool:
+        
+    
     
     def get_obstacle_clusters(self) -> list[dict]:
         """
@@ -214,7 +215,14 @@ def simple_dynamic():
     start = (1, 7)
     goals = [(18, 18)]
 
-    return Map(grid, start, goals, "Simple Dynamic Map")
+    dynamic_obstacles = [
+        {"initial_pos": [3, 2],  "pos": [3, 2],  "size": 2, "vel": [0,  1]},
+        {"initial_pos": [7, 12], "pos": [7, 12], "size": 2, "vel": [0,  1]},
+        {"initial_pos": [11, 8], "pos": [11, 8], "size": 2, "vel": [0, -1]},
+        {"initial_pos": [15, 5], "pos": [15, 5], "size": 2, "vel": [0, -1]},
+    ]
+
+    return Map(grid, start, goals, "Simple Dynamic Map", dynamic_obstacles=dynamic_obstacles)
 
 # =========================
 # Map 5: Hard Dynamic Map (multiple moving obstacles)
@@ -248,7 +256,15 @@ def hard_dynamic():
     start = (1, 5)
     goals = [(18, 18)]
 
-    return Map(grid, start, goals, "Hard Dynamic Map")
+    dynamic_obstacles = [
+        {"initial_pos": [5,  1],  "pos": [5,  1],  "size": 2, "vel": [ 1, 0]},
+        {"initial_pos": [15, 9],  "pos": [15, 9],  "size": 2, "vel": [-1, 0]},
+        {"initial_pos": [10, 11], "pos": [10, 11], "size": 2, "vel": [0,  1]},
+        {"initial_pos": [7,  14], "pos": [7,  14], "size": 2, "vel": [0, -1]},
+        {"initial_pos": [12, 12], "pos": [12, 12], "size": 2, "vel": [ 1, 0]},
+    ]
+
+    return Map(grid, start, goals, "Hard Dynamic Map", dynamic_obstacles=dynamic_obstacles)
 
 # =========================
 # Map loader
@@ -266,3 +282,14 @@ def get_map(name):
     if name not in MAPS:
         raise ValueError(f"Map '{name}' not found")
     return MAPS[name]()
+
+
+def grid_to_obstacles(grid):
+    """Convert a numpy grid to a list of (x, y, w, h) obstacle rectangles (one per cell)."""
+    obstacles = []
+    rows, cols = grid.shape
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r, c] == 1:
+                obstacles.append((c, r, 1, 1))  # (x, y, w, h)
+    return obstacles
