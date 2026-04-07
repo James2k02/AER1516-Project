@@ -308,6 +308,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 from dynamics import State
+from utils import update_obstacles
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -739,6 +740,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
                 # =========================
                 # Draw dynamic obstacles (optional)
                 # =========================
+                update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
                 for obs in dynamics_model.dynamic_obstacles:
                     rect = plt.Rectangle(
                         (obs.x, obs.y),

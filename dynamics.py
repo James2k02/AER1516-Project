@@ -164,11 +164,6 @@ class RobotDynamics:
 
         return (pos[1], pos[0], size, size)
     
-    def get_max_speed(self) -> float:
-        """Return maximum robot speed."""
-        # TODO: Implement
-        pass
-    
     def get_hop_speed(self) -> float:
         """Return speed when hopping over obstacles."""
         # TODO: Implement

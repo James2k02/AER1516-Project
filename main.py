@@ -9,47 +9,7 @@ from maps import get_map
 from dynamics import RobotDynamics
 from dynamics import State
 from path_planner import plan_rrt
-
-# =========================
-# Checking if a position is valid for the obstacle to move into (no walls, within bounds)
-# =========================
-def is_valid_position(grid, r, c, size):
-    for i in range(size):
-        for j in range(size):
-            rr = r + i
-            cc = c + j
-
-            # out of bounds
-            if rr < 0 or rr >= grid.shape[0] or cc < 0 or cc >= grid.shape[1]:
-                return False
-
-            # hit wall
-            if grid[rr, cc] == 1:
-                return False
-
-    return True
-
-# =========================
-# Update dynamic obstacles
-# =========================
-def update_obstacles(obstacles, grid):
-    for obs in obstacles:
-        r, c = obs["pos"]
-        vr, vc = obs["vel"]
-        size = obs["size"]
-
-        # try move
-        r_new = r + vr
-        c_new = c + vc
-
-        # check if move is valid
-        if is_valid_position(grid, r_new, c_new, size):
-            obs["pos"] = [r_new, c_new]
-        else:
-            # bounce if blocked
-            obs["vel"][0] *= -1
-            obs["vel"][1] *= -1
-            
+from utils import update_obstacles            
             
 # =========================
 # MAIN FUNCTIONS
