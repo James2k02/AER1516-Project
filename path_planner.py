@@ -769,10 +769,6 @@ def plan_rrt(start, goal, map: Map, dynamics_model, ax=None, max_iterations=MAX_
         
         # 1. Sample random config
         q_rand = sample_random_state(map_x_bounds, map_y_bounds, goal=goal, p_goal=p_goal_bias)
-
-        # validate sample to be in bounds and not in an obstacle
-        if not is_state_valid(map,q_rand):
-            continue
         
         # 2. Find nearest node
         q_nearest_node = nearest_node(tree, q_rand)
@@ -845,7 +841,7 @@ def plan_rrt_star(start: State, goal: State, map: Map, dynamics_model,
     # Extract map info
     grid = map.grid
     map_x_bounds = (0,map.width)
-    map_y_bounds = (0,map.width)
+    map_y_bounds = (0,map.height)
 
     while iterations < max_iterations:
         # Time check
@@ -854,9 +850,6 @@ def plan_rrt_star(start: State, goal: State, map: Map, dynamics_model,
 
         # Step 1: Sample random configuration (with goal biasing))
         q_rand = sample_random_state(map_x_bounds,map_y_bounds, goal = goal, p_goal = p_goal_bias)
-        # validate sample to be in bounds and not in an obstacle
-        if not is_state_valid(map,q_rand):
-            continue
 
         # Step 2: Find nearest node in tree
         q_nearest_node = nearest_node(tree, q_rand)
