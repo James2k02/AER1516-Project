@@ -190,7 +190,7 @@ def multi_passage():
     grid[16:17, 7:8] = 0
     grid[16:17, 15:16] = 0
 
-    start = (1, 9)
+    start = (2, 9)
     goals = [(18, 8)]
 
     return Map(grid, start, goals, "Multi Route Map")
@@ -209,7 +209,7 @@ def simple_dynamic():
     grid[:, 0] = 1
     grid[:, -1] = 1
 
-    start = (1, 7)
+    start = (2, 7)
     goals = [(18, 18)]
 
     dynamic_obstacles = [
