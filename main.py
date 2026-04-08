@@ -170,4 +170,4 @@ def RRT_tester(map_name):
 if __name__ == "__main__":
     # choose map: "map4" or "map5"
     # run_simulation("map1")
-    RRT_tester("map4")
+    RRT_tester("map2")

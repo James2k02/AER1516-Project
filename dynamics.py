@@ -140,30 +140,6 @@ class RobotDynamics:
 
         return True
     
-    def obstacle_position_at_time(self, obstacle_id: int, t: float, num_substeps: int = 10):
-        """Return obstacle position (x, y, w, h) at time t."""
-        # TODO: Implement (placeholder: static obstacle)
-        obs = self.dynamic_obstacles[obstacle_id]
-
-        pos = list(obs["initial_pos"])
-        vel = list(obs["vel"])
-        size = obs["size"]
-
-        steps = int(t)  # assume dt = 1 for now
-
-        for _ in range(steps):
-
-            r_new = pos[0] + vel[0]
-            c_new = pos[1] + vel[1]
-
-            if self.is_valid_position(r_new, c_new, size):
-                pos = [r_new, c_new]
-            else:
-                vel[0] *= -1
-                vel[1] *= -1
-
-        return (pos[1], pos[0], size, size)
-    
     def simulate_trajectory(self, path, goal_tolerance = 0.1):
         """
         Simulate robot following a path using controller + dynamics.
