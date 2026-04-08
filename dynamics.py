@@ -51,10 +51,10 @@ class RobotDynamics:
     Interface for plugging in custom robot dynamics.
     Dynamics team fills in the implementations.
     """
-    def __init__(self, max_vel = 1.0, max_angular_vel = 0.5, robot_radius = 0.5):
-        self.max_vel = max_vel
-        self.max_angular_vel = max_angular_vel
-        self.robot_radius = robot_radius
+    def __init__(self):
+        self.max_vel = 3.0
+        self.max_angular_vel = 1.5
+        self.robot_radius = 0.3 #m
 
         self.grid = None
         self.static_obstacles = []
@@ -140,29 +140,49 @@ class RobotDynamics:
 
         return True
     
-    def obstacle_position_at_time(self, obstacle_id: int, t: float, num_substeps: int = 10):
-        """Return obstacle position (x, y, w, h) at time t."""
-        # TODO: Implement (placeholder: static obstacle)
-        obs = self.dynamic_obstacles[obstacle_id]
+    def simulate_trajectory(self, path, goal_tolerance = 0.1):
+        """
+        Simulate robot following a path using controller + dynamics.
 
-        pos = list(obs["initial_pos"])
-        vel = list(obs["vel"])
-        size = obs["size"]
+        Args:
+            path: list of State waypoints
+            goal_tolerance: distance threshold to consider waypoint reached
 
-        steps = int(t)  # assume dt = 1 for now
+        Returns:
+            np.ndarray of shape (N, 3): [x, y, theta]
+        """
 
-        for _ in range(steps):
+        if path is None or len(path) == 0:
+            return None
 
-            r_new = pos[0] + vel[0]
-            c_new = pos[1] + vel[1]
+        full_traj = []
 
-            if self.is_valid_position(r_new, c_new, size):
-                pos = [r_new, c_new]
-            else:
-                vel[0] *= -1
-                vel[1] *= -1
+        current_state = path[0]
 
-        return (pos[1], pos[0], size, size)
+        # Loop through each waypoint
+        for target_state in path[1:]:
+
+            # Move toward current waypoint
+            while current_state.distance_to(target_state) > goal_tolerance:
+
+                # 1. Compute control input
+                v, omega = self.robot_controller(current_state, target_state)
+
+                # 2. Simulate forward motion
+                traj_segment = self.trajectory(current_state, v, omega)
+
+                if traj_segment is None or len(traj_segment) == 0:
+                    break
+
+                # 3. Append trajectory segment
+                for x, y, theta in traj_segment:
+                    full_traj.append([x, y, theta])
+
+                # 4. Update current state (VERY IMPORTANT)
+                x, y, theta = traj_segment[-1]
+                current_state = State(x, y, theta)
+
+        return np.array(full_traj)    
     
     def get_hop_speed(self) -> float:
         """Return speed when hopping over obstacles."""
