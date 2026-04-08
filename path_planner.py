@@ -639,6 +639,67 @@ def extract_path(goal_node: TreeNode) -> List[State]:
 # TODO 10: MAIN RRT PLANNING LOOP
 # ============================================================================
 
+def plot_final_path(ax, path, map_info, dynamics_model, start, goal):
+    """
+    Plot final RRT path on the map.
+    """
+
+    ax.clear()
+    grid = map_info.grid
+
+    # =========================
+    # Draw static obstacles
+    # =========================
+    for obs in dynamics_model.static_obstacles:
+        rect = plt.Rectangle(
+            (obs.x, obs.y),
+            obs.w,
+            obs.h,
+            edgecolor='black',
+            facecolor='black'
+        )
+        ax.add_patch(rect)
+
+    # =========================
+    # Draw dynamic obstacles (initial positions)
+    # =========================
+    for obs in dynamics_model.dynamic_obstacles:
+        rect = plt.Rectangle(
+            (obs.x, obs.y),
+            obs.w,
+            obs.h,
+            edgecolor='red',
+            facecolor='red',
+            alpha=0.6
+        )
+        ax.add_patch(rect)
+
+    # =========================
+    # Draw path
+    # =========================
+    if path is not None and len(path) > 0:
+        xs = [s.x for s in path]
+        ys = [s.y for s in path]
+
+        ax.plot(xs, ys, color='blue', linewidth=2, label='RRT Path')
+
+        # optional: draw waypoints
+        ax.scatter(xs, ys, c='blue', s=10)
+
+    # =========================
+    # Draw start & goal
+    # =========================
+    ax.scatter(start.x, start.y, c='green', s=100, label='Start')
+    ax.scatter(goal.x, goal.y, c='yellow', s=100, label='Goal')
+
+    # =========================
+    # Formatting
+    # =========================
+    ax.set_xlim(0, grid.shape[1])
+    ax.set_ylim(grid.shape[0], 0)
+    ax.set_title("Final RRT Path")
+    ax.legend()
+
 def visualize_rrt(ax, tree, path=None):
     """
     Draw the RRT tree and optional final path.
@@ -922,6 +983,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
 
     if goal_reached:
         path = extract_path(new_node)
+        plot_final_path(ax, path, map_info, dynamics_model, start, goal)
         planning_time = time.time() - start_time
         print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
         return path
