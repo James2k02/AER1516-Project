@@ -10,7 +10,7 @@ import numpy as np
 from matplotlib.patches import Circle
 from dynamics import RobotDynamics
 from dynamics import State
-from path_planner import plan_rrt
+from path_planner import plan_rrt, plan_rrt_star
 from utils import update_obstacles
 
 def reset_all_dynamic_obstacles(dynamic_obstacles):
@@ -164,10 +164,73 @@ def RRT_tester(map_name):
 
     plt.show()
 
+def RRT_star_tester(map_name):
+    # =========================
+    # Load map
+    # =========================
+    m = get_map(map_name)
+    grid = m.grid
+
+    # =========================
+    # Setup dynamics
+    # =========================
+    dynamics_model = RobotDynamics()
+    dynamics_model.grid = grid
+
+    dynamics_model.static_obstacles = m.static_obstacles
+    dynamics_model.dynamic_obstacles = m.dynamic_obstacles
+    print("STATIC OBSTACLES:", dynamics_model.static_obstacles)
+    print("COUNT:", len(dynamics_model.static_obstacles))
+
+    # =========================
+    # Convert start/goal to State
+    # =========================
+    # NOTE: (row, col) → (x, y)
+    start = State(m.start[1], m.start[0], 0)
+    goal = State(m.goals[0][1], m.goals[0][0], 0)
+
+    print(f"Start: {start}")
+    print(f"Goal: {goal}")
+
+    # =========================
+    # Visualization setup
+    # =========================
+    plt.ion()
+    fig, ax = plt.subplots()
+
+    # =========================
+    # Run RRT
+    # =========================
+    path = plan_rrt_star(start = start, goal = goal, map_info = m, dynamics_model = dynamics_model, ax = ax, step_size = 0.5, max_iterations = 3000, goal_threshold = 1.0)
+
+    if path is None:
+        print("No path found.")
+    else:
+        print(f"Path length: {len(path)}")
+
+        full_traj = dynamics_model.simulate_trajectory(path)
+
+        print(f"Simulated trajectory length: {len(full_traj)}")
+        reset_all_dynamic_obstacles(dynamics_model.dynamic_obstacles)
+        animate_execution(full_traj, dynamics_model, m, start, goal)
+
+    # =========================
+    # Final display
+    # =========================
+    plt.ioff()
+
+    if path is None:
+        print("No path found.")
+    else:
+        print(f"Path length: {len(path)}")
+
+    plt.show()
+
 # =========================
 # RUN HERE
 # =========================
 if __name__ == "__main__":
     # choose map: "map4" or "map5"
     # run_simulation("map1")
-    RRT_tester("map2")
+    # RRT_tester("map2")
+    RRT_star_tester("map1")
