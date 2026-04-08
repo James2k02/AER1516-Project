@@ -307,6 +307,7 @@ import time
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn import tree
 from dynamics import State
 from utils import update_obstacles
 
@@ -634,7 +635,6 @@ def extract_path(goal_node: TreeNode) -> List[State]:
     path.reverse()
     return path
 
-
 # ============================================================================
 # TODO 10: MAIN RRT PLANNING LOOP
 # ============================================================================
@@ -879,7 +879,103 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
     return None
 
 # ============================================================================
-# TODO 14: MAIN RRT*FND PLANNING LOOP
+# FUNCTIONS FOR RRT*FND
+# ============================================================================
+def detect_future_collision(path: List[State], current_node: int, dynamics_model):
+    """
+    Check if any future edge in the path from current_node 
+    to goal collides with updated dynamic obstacles
+    """
+    for i in range(current_node, len(path) - 1):
+        traj = steer(path[i], path[i+1], step_size = 1.0, dynamics_model = dynamics_model)
+        
+        # return True if trajectory is not valid (either steering failure or collision)
+        if traj is None:
+            return True
+        if not is_collision_free_trajectory(traj, dynamics_model):
+            return True   
+    return False
+
+def select_branch(path: List[State], current_index: int):
+    """
+    Split path into:
+    - Main branch: nodes still connected to current position (up to current_index)
+    - Separate branch: forward portion of path toward goal (from current_index + 1 to end)
+    """
+    sigma_main = path[:current_index + 1] # from start to current position including current node 
+    sigma_separate = path[current_index + 1:] # future portion of path toward goal
+    
+    return sigma_main, sigma_separate
+
+def valid_path(sigma_separate: List[State], dynamics_model):
+    """
+    Removes any invalid nodes/edges from the path that collide with obstacles, returning the cleaned path
+    """
+    valid = [sigma_separate[0]]
+    for i in range(len(sigma_separate) - 1):
+        traj = steer(sigma_separate[i], sigma_separate[i+1], 1.0, dynamics_model)
+        
+        if traj is None:
+            break
+        
+        if not is_collision_free_trajectory(traj, dynamics_model):
+            break
+    
+        valid.append(sigma_separate[i+1]) 
+    return valid
+
+def attach_branch(tree: RRTTree, start_node: List[State], sigma_separate: List[State], dynamics_model):
+    """
+    Attach the rest of sigma_separate back to the main tree at the new connection point (new_node)
+    """
+    prev = start_node
+    
+    # here, we are starting from the node after the connection point since the connection point itself is already in the tree (as start_node)
+    for i in range(1, len(sigma_separate)):
+        s = sigma_separate[i]
+        new_node = tree.add_node(s, parent = prev, cost = prev.cost + edge_cost(prev.state, s, dynamics_model))
+        prev = new_node
+    return prev # return the last node added (which should be the goal node if sigma_separate is valid all the way to the end)
+
+def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model):
+    """
+    Try to reconnect the separate branch back to the main tree by finding nearby nodes in the main tree and 
+    checking for collision-free connections to the start of the separate branch.  If successful, update the 
+    tree structure and return True. If no valid connection is found, return False.
+    """
+    if len(sigma_separate) == 0:
+        return None
+    
+    # Try to connect the main tree into any of the nodes in the separate branch (starting from the first node in separate branch)
+    for target in sigma_separate:
+        
+        # Loop through nodes in the main tree to find nearby nodes to target
+        for node in tree.nodes:
+            traj = steer(node.state, target, step_size = 1.0, dynamics_model = dynamics_model)
+            
+            if traj is None:
+                continue
+            
+            if is_collision_free_trajectory(traj, dynamics_model):
+                new_node = tree.add_node(target, parent = node, cost = node.cost + edge_cost(node.state, target, dynamics_model))
+                
+                # attach the rest of the separate branch to this new node (node in the separate branch that we just connected to the main tree)
+                final_node = attach_branch(tree, new_node, sigma_separate, dynamics_model)
+                return final_node # return the final node added (which should be the goal node if successful)
+    return None
+
+def regrow(current_state: State, goal: State, map_info, dynamics_model, max_iterations = 1000):
+    """
+    If reconnect fails, we need to regrow the tree from the current position. 
+    This involves running a new RRT* from the current state with the same goal, but with updated obstacle information.
+    We can bias the growth toward the region of the separate branch to try to find a new path around the obstacle.
+    """
+    # For simplicity, we can just call plan_rrt_star with the current state as the new start and biasing toward the first node in sigma_separate
+    return plan_rrt_star(current_state, goal, map_info, dynamics_model, max_iterations = max_iterations, p_goal_bias = 0.5) # increase goal bias to encourage finding a path toward goal quickly
+
+
+# ============================================================================
+# MAIN RRT*FND PLANNING LOOP
 # ============================================================================
 def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                       max_iterations: int = 5000, max_time: float = 10.0,
@@ -890,27 +986,47 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
     # - run the existing RRT* planner to compute an initial path from start to goal
     # - build the full tree (τ) and extract the solution path (σ)
     # - this will be the baseline path before any dynamic obstacles are introduced
+    path = plan_rrt_star(start, goal, map_info, dynamics_model,
+                         max_iterations=max_iterations,
+                         max_time=max_time,
+                         step_size=step_size,
+                         goal_threshold=goal_threshold,
+                         p_goal_bias=p_goal_bias)
+    
+    if path is None:
+        print("Initial planning failed, cannot execute RRT*FND")
+        return None
     
     # Step 2: Initialization
     # - set the current node (p_current) to the start configuration
     # - keep track of current path (σ) 
     # - initialize any time or iteration tracking if needed for monitoring
+    p_current = start
+    current_index = 0
     
     # Step 3: Main Execution Loop
     # - while p_current is not the goal
+    while not is_goal_reached(p_current, goal, goal_threshold):
     
         # Step 3.1: Move along the current path σ
         # - move the robot forward along the path σ, updating p_current as it progresses
         # - this simulates the robot executing the planned path in the environment
+        if current_index < len(path) - 1:
+            current_index += 1
+            p_current = path[current_index]
+        else:
+            break
         
         # Step 3.2: Update dynamic obstacles
         # - update positions of moving obstacles (should be provided by dynamics module or environment model)
         # - environment now changes over time, so we need to keep track of where obstacles are at the current time step
+        update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
         
         # Step 3.3: Collision Detection
         # - check if the path ahead (the remaining portion of σ from p_current to goal) is still valid given the updated obstacle positions
         # - this involves checking all future edges in the path for collisions with the new obstacle positions
         # - if a collision is detected, we need to trigger the path repair process
+        if detect_future_collision(path, current_index, dynamics_model):
         
             # IF COLLISION IS DETECTED
             # Step 3.3.1: Stop Movement
@@ -921,29 +1037,47 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             # - Split the tree τ at p_current
             # - Keep: nodes still connected to p_current (main tree)
             # - Separate: forward portion of path toward goal
+            sigma_main, sigma_separate = select_branch(path, current_index)
             
             # Step 3.3.3: ValidPath function
             # - Remove nodes/edges that collide with obstacles
             # - This cleans the tree
             # - The removed portion becomes σ_separate (from node right after obstacle to goal)
+            sigma_separate = valid_path(sigma_separate, dynamics_model)
+            
             
             # Step 3.3.4: Try Reconnect
             # - Find nearby nodes in main tree τ that are close to the start of σ_separate
             # - Attempt direct connection
             # - For each nearby node, check if connecting to σ_separate is collision-free and is a valid trajectory
-            # - If successful, reconnect the trees (main tree + separate path) and update σ and break loop
+            # - If successful, reconnect the trees (main tree + separate path) and update σ and break looptree = RRTTree(p_current)
+            tree = RRTTree(p_current)
+            final_node = reconnect(tree, sigma_separate, dynamics_model)
+            
+            if final_node is not None:
+                new_path = extract_path(final_node)
+                path = sigma_main + new_path
             
             # Step 3.3.5: If Reconnect Fails, Regrow
             # - If no valid connection is found, we need to regrow the tree τ from p_current
             # - Bias the growth toward the region of σ_separate to try to find a new path around the obstacle
             # - This involves running a new RRT* from p_current with the same goal, but with updated obstacle information
+            else:
+                new_path = regrow(p_current, goal, map_info, dynamics_model)
+
+                if new_path is None:
+                    return None
+
+                path = sigma_main + new_path
             
             # Step 3.3.6: Recompute Solution Path
             # - After reconnecting or regrowing, we need to recompute the solution path σ from p_current to goal using the updated tree τ
             # - This will give us a new path that avoids the newly detected obstacle
+            current_index = len(sigma_main) - 1
             
             # Step 3.3.7: Resume Movement
             # - Once we have a new path σ, we can resume movement along this path toward
+            continue
             
         # Step 3.4: Move to Next Node
         # - Update p_current to the next node in the current path σ
@@ -951,7 +1085,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
     # Step 4: End when goal reached
     # - Once p_current is within the goal threshold, we can terminate and return the final path taken to reach the goal
             
-    return None # placeholder
+    return path # placeholder
     
     
 # ============================================================================
