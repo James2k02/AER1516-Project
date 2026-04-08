@@ -779,10 +779,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
 # ============================================================================
 # TODO 13: MAIN RRT* PLANNING LOOP
 # ============================================================================
-def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, 
-                  max_iterations: int = 5000, max_time: float = 10.0, 
-                  step_size: float = 1.0, goal_threshold: float = 0.5,
-                  p_goal_bias: float = 0.05) -> Optional[List[State]]:
+def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None, max_iterations: int = 20000, max_time: float = 60.0, step_size: float = 1.0, goal_threshold: float = 0.1, p_goal_bias: float = 0.05):
 
     start_time = time.time()
     iterations = 0
@@ -791,6 +788,8 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
     # Extract map info
     rows, cols = map_info.dimensions
     map_bounds = (0, cols, 0, rows)
+
+    goal_reached = False
 
     while iterations < max_iterations:
         # Time check
@@ -830,6 +829,55 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
             best_parent = q_nearest_node
             best_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
 
+            # =========================
+            # ALWAYS VISUALIZE
+            # =========================
+            if ax is not None and iterations % 20 == 0:
+                if iterations % 100 == 0:
+                    print(f"Length of tree is: {tree.size()}")
+                ax.clear()
+
+                grid = map_info.grid
+                ax.set_facecolor('white')
+
+                # =========================
+                # Draw static obstacles
+                # =========================
+                for obs in dynamics_model.static_obstacles:
+                    rect = plt.Rectangle(
+                        (obs.x, obs.y),
+                        obs.w,
+                        obs.h,
+                        edgecolor='black',
+                        facecolor='black'
+                    )
+                    ax.add_patch(rect)
+
+                # =========================
+                # Draw dynamic obstacles (optional)
+                # =========================
+                update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
+                for obs in dynamics_model.dynamic_obstacles:
+                    rect = plt.Rectangle(
+                        (obs.x, obs.y),
+                        obs.w,
+                        obs.h,
+                        edgecolor='red',
+                        facecolor='red'
+                    )
+                    ax.add_patch(rect)
+
+                visualize_rrt(ax, tree)
+
+                ax.scatter(start.x, start.y, c='green', s=100)
+                ax.scatter(goal.x, goal.y, c='red', s=100)
+
+                ax.set_title(f"RRT Growth (iter={iterations})")
+                ax.set_xlim(0, grid.shape[1])
+                ax.set_ylim(grid.shape[0], 0)
+
+                plt.pause(0.01)
+
             for neighbor in neighbors:
 
                 # traj = steer(neighbor.state, q_new, dynamics_model) # try connecting neighbor to new node
@@ -868,15 +916,20 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model,
 
             # Step 9: Check if goal reached
             if is_goal_reached(q_new, goal, goal_threshold):
-                path = extract_path(new_node)
-                planning_time = time.time() - start_time
-                print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
-                return path
+                goal_reached = True
 
         iterations += 1
 
-    print("[RRT*] No path found")
-    return None
+    if goal_reached:
+        path = extract_path(new_node)
+        planning_time = time.time() - start_time
+        print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
+        return path
+
+    else:
+        print("[RRT*] No path found")
+        return None
+    
 
 # ============================================================================
 # FUNCTIONS FOR RRT*FND
