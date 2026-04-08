@@ -536,7 +536,7 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
     for i, point in enumerate(trajectory):
         x, y, _ = point
 
-        t = t_start + i*dt
+        t = t_start + i * dt
 
         # 1. Static obstacles check
         for obs in dynamics_model.static_obstacles:
@@ -545,7 +545,7 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
             
         # 2. Dynamic obstacles check
         for obs in dynamics_model.dynamic_obstacles:
-            obs_t = obs.get_position_at_time(t)
+            obs_t = obs.get_position_at_time(t, dynamics_model.grid)
             if obs_t.collides_with_point(x, y, radius):
                 return False
 

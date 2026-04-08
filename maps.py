@@ -110,15 +110,25 @@ class DynamicObstacle(Obstacle):
 
         return True
 
-    def get_position_at_time(self, t):
+    def get_position_at_time(self, t, grid, dt = 0.1):
         """
-        Predict position at time t (for planning).
-        NOTE: simple linear model (no bounce prediction yet)
-        """
-        x = self.initial_pos[0] + self.vel[0] * t
-        y = self.initial_pos[1] + self.vel[1] * t
+        Predict position at time t using SAME bounce dynamics as update().
 
-        return DynamicObstacle(x, y, self.size, self.vel)
+        Returns:
+            A NEW DynamicObstacle at predicted position
+        """
+        from copy import deepcopy
+
+        obs_copy = deepcopy(self)
+        obs_copy.reset_dynamic_obstacle()
+
+        time_elapsed = 0.0
+
+        while time_elapsed < t:
+            obs_copy.update(grid)
+            time_elapsed += dt
+
+        return obs_copy
     
     def reset_dynamic_obstacle(self):
         """
@@ -280,7 +290,7 @@ def hard_dynamic():
         DynamicObstacle(12, 12, 2, vel=(0, 0.1)),
     ]
 
-    start = (1, 5)
+    start = (2, 5)
     goals = [(18, 18)]
 
     return Map(grid, start, goals, "Hard Dynamic Map", static_obstacles, dynamic_obstacles)
