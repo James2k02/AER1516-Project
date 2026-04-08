@@ -592,6 +592,16 @@ def rewire_neighbors(tree: RRTTree, new_node: TreeNode, radius: float, dynamics_
     pass
 
 
+def propagate_cost(node: TreeNode):
+    """
+    Recursively update costs of all descendants after a rewire.
+    Must be called after changing node.cost so children inherit the delta.
+    """
+    for child in node.children:
+        child.cost = node.cost + edge_cost(node.state, child.state)
+        propagate_cost(child)
+
+
 # ============================================================================
 # TODO 8: GOAL DETECTION & TERMINATION
 # ============================================================================
@@ -851,6 +861,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
     map_bounds = (0, cols, 0, rows)
 
     goal_reached = False
+    goal_node = None
 
     while iterations < max_iterations:
         # Time check
@@ -880,7 +891,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
             # Step 5: Find neighbors within radius defined by formula r = gamma * (log(n) / n)^(1/d)
             n = tree.size()
             d = 2
-            gamma = 5.0  # tuning parameter
+            gamma = 15.0  # tuning parameter — theoretically gamma_star ≈ 25 for a 20x20 2D map
 
             radius = gamma * (math.log(n + 1) / (n + 1)) ** (1/d) # radius shrinks as tree grows (explore widely at the start, then refine locally later on)
 
@@ -942,7 +953,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
             for neighbor in neighbors:
 
                 # traj = steer(neighbor.state, q_new, dynamics_model) # try connecting neighbor to new node
-                traj = steer(neighbor.state, q_new, step_size, dynamics_model)
+                traj = steer(neighbor.state, q_new, step_size, dynamics_model)  # no cap: must reach q_new
                 if traj is None: # steering failure check
                     continue
 
@@ -962,7 +973,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
             for neighbor in neighbors:
 
                 # traj = steer(q_new, neighbor.state, dynamics_model) # try connecting new node to neighbor (reverse direction from before; new node is now the parent)
-                traj = steer(q_new, neighbor.state, step_size, dynamics_model)
+                traj = steer(q_new, neighbor.state, step_size, dynamics_model)  # no cap: must reach neighbor
                 if traj is None:
                     continue
 
@@ -972,17 +983,24 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
                 new_cost = new_node.cost + edge_cost(q_new, neighbor.state, dynamics_model)
 
                 if new_cost < neighbor.cost:
-                    neighbor.parent = new_node # rewire neighbor to new node
+                    old_parent = neighbor.parent
+                    if old_parent is not None:
+                        old_parent.children.remove(neighbor)
+                    neighbor.parent = new_node
+                    new_node.children.append(neighbor)
                     neighbor.cost = new_cost
+                    propagate_cost(neighbor)  # update all descendants
 
-            # Step 9: Check if goal reached
+            # Step 9: Check if goal reached — keep cheapest goal node found
             if is_goal_reached(q_new, goal, goal_threshold):
                 goal_reached = True
+                if goal_node is None or new_node.cost < goal_node.cost:
+                    goal_node = new_node
 
         iterations += 1
 
     if goal_reached:
-        path = extract_path(new_node)
+        path = extract_path(goal_node)
         plot_final_path(ax, path, map_info, dynamics_model, start, goal)
         planning_time = time.time() - start_time
         print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
