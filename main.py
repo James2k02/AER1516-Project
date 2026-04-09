@@ -141,7 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("--map",       choices=["map1", "map2", "map3", "map4", "map5"], default="map1")
     parser.add_argument("--iters",     type=int,   default=3000, help="Max iterations")
     parser.add_argument("--step",      type=float, default=0.5,  help="Step size")
-    parser.add_argument("--threshold", type=float, default=1.0,  help="Goal threshold")
+    parser.add_argument("--threshold", type=float, default=0.3,  help="Goal threshold")
     args = parser.parse_args()
 
     kwargs = dict(max_iterations=args.iters, step_size=args.step, goal_threshold=args.threshold)
