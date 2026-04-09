@@ -504,6 +504,12 @@ def steer(start: State, target: State, step_size: float, dynamics_model):
 
     return np.array(truncated)
 
+def steer_full(start: State, target: State, dynamics_model):
+    v, omega = dynamics_model.robot_controller(start, target)
+    trajectory = dynamics_model.trajectory(start, v, omega)
+
+    return trajectory  # NO truncation
+
 # ============================================================================
 # TODO 5: COLLISION CHECKING
 # ============================================================================
@@ -777,7 +783,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
             for neighbor in neighbors:
 
                 # traj = steer(neighbor.state, q_new, dynamics_model) # try connecting neighbor to new node
-                traj = steer(neighbor.state, q_new, step_size, dynamics_model)  # no cap: must reach q_new
+                traj = steer_full(neighbor.state, q_new, dynamics_model)  # no cap: must reach q_new
                 if traj is None: # steering failure check
                     continue
 
@@ -797,7 +803,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
             for neighbor in neighbors:
 
                 # traj = steer(q_new, neighbor.state, dynamics_model) # try connecting new node to neighbor (reverse direction from before; new node is now the parent)
-                traj = steer(q_new, neighbor.state, step_size, dynamics_model)  # no cap: must reach neighbor
+                traj = steer_full(q_new, neighbor.state, dynamics_model)  # no cap: must reach neighbor
                 if traj is None:
                     continue
 
