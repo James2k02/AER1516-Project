@@ -40,7 +40,7 @@ def _execute(path, dynamics_model, m, start, goal):
 # ---------------------------------------------------------
 # RRT tester
 # ---------------------------------------------------------
-def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=1.0):
+def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=0.5):
     m, dynamics_model, start, goal = _setup(map_name)
     print(f"[RRT] map={map_name}  start={start}  goal={goal}")
 
@@ -72,7 +72,7 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=1.0)
 # ---------------------------------------------------------
 # RRT* tester
 # ---------------------------------------------------------
-def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=1.0):
+def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=0.5):
     m, dynamics_model, start, goal = _setup(map_name)
     print(f"[RRT*] map={map_name}  start={start}  goal={goal}")
 
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("--map",       choices=["map1", "map2", "map3", "map4", "map5"], default="map1")
     parser.add_argument("--iters",     type=int,   default=3000, help="Max iterations")
     parser.add_argument("--step",      type=float, default=0.5,  help="Step size")
-    parser.add_argument("--threshold", type=float, default=0.3,  help="Goal threshold")
+    parser.add_argument("--threshold", type=float, default=0.5,  help="Goal threshold")
     args = parser.parse_args()
 
     kwargs = dict(max_iterations=args.iters, step_size=args.step, goal_threshold=args.threshold)

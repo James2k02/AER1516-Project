@@ -495,10 +495,10 @@ def steer(start: State, target: State, step_size: float, dynamics_model):
         d = math.sqrt(dx*dx + dy*dy)
 
         total_dist += d
-        truncated.append([x, y, theta])
-
-        if total_dist >= step_size:
+        if total_dist > step_size:
             break
+        
+        truncated.append([x, y, theta])
 
         prev_x, prev_y = x, y
 

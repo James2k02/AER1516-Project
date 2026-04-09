@@ -89,8 +89,8 @@ class RobotDynamics:
         dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
 
         # Gains (tune these!)
-        v_gain = 1.0
-        omega_gain = 2.0
+        v_gain = 0.9
+        omega_gain = 2.5
 
         # Control
         v = v_gain * lin_dist
@@ -102,7 +102,7 @@ class RobotDynamics:
 
         return v, omega
     
-    def trajectory(self, state: State, v: float, omega: float, num_substeps: int = 10):
+    def trajectory(self, state: State, v: float, omega: float, num_substeps: int = 15):
         """
         Forward simulate robot dynamics given constant (v, omega).
         Returns Nx3 numpy array.
