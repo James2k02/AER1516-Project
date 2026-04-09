@@ -92,7 +92,7 @@ def visualize_map(m, steps=50, pause_time=0.2):
 
 
 if __name__ == "__main__":
-    m = get_map("map5")
+    m = get_map("map4")
 
     debug_map(m)
     visualize_map(m)

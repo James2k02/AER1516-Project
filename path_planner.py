@@ -307,6 +307,7 @@ import time
 import random
 import numpy as np
 from dynamics import State
+from utils import update_obstacles
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -945,7 +946,8 @@ def regrow(current_state: State, goal: State, map_info, dynamics_model, max_iter
 def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                       max_iterations: int = 5000, max_time: float = 10.0,
                       step_size: float = 1.0, goal_threshold: float = 0.5,
-                      p_goal_bias: float = 0.05):
+                      p_goal_bias: float = 0.05, viz_callback=None, 
+                      viz_interval: int = 20):
     
     # Step 1: Initial Planning Phase (same as RRT*)
     # - run the existing RRT* planner to compute an initial path from start to goal
@@ -1046,6 +1048,8 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             
         # Step 3.4: Move to Next Node
         # - Update p_current to the next node in the current path σ
+        if viz_callback is not None: # and iterations % viz_interval == 0:
+            viz_callback({"planner": "RRT*", "tree": tree}) #, "iteration": iterations, "phase": "planning"})
         
     # Step 4: End when goal reached
     # - Once p_current is within the goal threshold, we can terminate and return the final path taken to reach the goal
