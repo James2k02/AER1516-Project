@@ -913,36 +913,3 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             
     return None # placeholder
     
-    
-# ============================================================================
-# EXAMPLE USAGE
-# ============================================================================
-
-# if __name__ == "__main__":
-    # print("=" * 70)
-    # print("RRT PLANNER EXAMPLE")
-    # print("=" * 70)
-    
-    # # Setup map info
-    # map_info = {
-    #     'bounds': (0, 100, 0, 100),
-    #     'obstacles': [],
-    # }
-    
-    # # Setup start and goal
-    # start = State(10, 10, 0)
-    # goal = State(90, 90, 0)
-    
-    # print(f"\nStart: {start}")
-    # print(f"Goal: {goal}")
-    
-    # # Plan without dynamics (fallback steering)
-    # path = plan_rrt(start, goal, map_info, dynamics_model=None, 
-    #                max_iterations=1000, max_time=5.0, step_size=2.0)
-    
-    # if path:
-    #     print(f"\nFound path with {len(path)} waypoints:")
-    #     for i, state in enumerate(path):
-    #         print(f"  {i}: {state}")
-    # else:
-    #     print("\nNo path found")
