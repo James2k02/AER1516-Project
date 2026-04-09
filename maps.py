@@ -46,8 +46,8 @@ class Obstacle:
         Collision check with circular robot via rectangle inflation.
         """
         return (
-            self.x - radius <= px <= self.x + self.w + radius and
-            self.y - radius <= py <= self.y + self.h + radius
+            self.x - radius - 0.05 <= px <= self.x + self.w + radius + 0.05 and
+            self.y - radius - 0.05 <= py <= self.y + self.h + radius + 0.05
         )
 
     def __repr__(self):
@@ -174,8 +174,8 @@ def simple():
 
     dynamic_obstacles = []
 
-    start = (2, 2)
-    goals = [(18, 18), (16, 5)]  # list of goals, can add more later
+    start = (2.5, 2.5)
+    goals = [(18.5, 18.5), (16.5, 5.5)]  # list of goals, can add more later
 
     return Map(grid, start, goals, "Simple Map", static_obstacles, dynamic_obstacles)
 

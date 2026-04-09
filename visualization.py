@@ -83,9 +83,9 @@ def draw_path_tiles(ax, path):
 def draw_start_goal(ax, start, goal):
     """Draw start (blue tile + marker) and goal (green tile + marker)."""
     _draw_tile(ax, int(start.x), int(start.y), _TILE_START, zorder=5)
-    ax.scatter(start.x + 0.5, start.y + 0.5, c='white', s=60, zorder=7, marker='o', label='Start')
+    ax.scatter(start.x, start.y, c='white', s=60, zorder=7, marker='o', label='Start')
     _draw_tile(ax, int(goal.x), int(goal.y), _TILE_GOAL, zorder=5)
-    ax.scatter(goal.x + 0.5, goal.y + 0.5, c='white', s=60, zorder=7, marker='*', label='Goal')
+    ax.scatter(goal.x, goal.y, c='white', s=60, zorder=7, marker='*', label='Goal')
 
 
 def draw_robot(ax, x, y, theta, radius):
