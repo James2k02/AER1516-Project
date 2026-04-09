@@ -20,6 +20,7 @@ _TILE_GOAL    = '#00cc44'   # bright green (goal)
 _TILE_STATIC  = '#cc2200'   # red (static obstacle)
 _TILE_DYNAMIC = '#ff6600'   # orange (dynamic obstacle)
 _TILE_START   = '#0088ff'   # blue (start position)
+_TILE_PATH    = '#8800cc'   # purple (path cells)
 _TILE_PAD     = 0.07        # fraction of cell used as gap between tiles
 
 
@@ -63,12 +64,28 @@ def draw_goal_tiles(ax, goals):
         _draw_tile(ax, int(gx), int(gy), _TILE_GOAL, zorder=3)
 
 
+def draw_path_tiles(ax, path):
+    """Color every grid cell the path passes through in purple."""
+    cells = set()
+    for i, s in enumerate(path):
+        cells.add((int(s.x), int(s.y)))
+        if i < len(path) - 1:
+            x0, y0 = s.x, s.y
+            x1, y1 = path[i + 1].x, path[i + 1].y
+            steps = max(int(np.hypot(x1 - x0, y1 - y0) * 4), 1)
+            for t in range(1, steps):
+                frac = t / steps
+                cells.add((int(x0 + frac * (x1 - x0)), int(y0 + frac * (y1 - y0))))
+    for (c, r) in cells:
+        _draw_tile(ax, c, r, _TILE_PATH, zorder=4)
+
+
 def draw_start_goal(ax, start, goal):
     """Draw start (blue tile + marker) and goal (green tile + marker)."""
-    _draw_tile(ax, int(start.x), int(start.y), _TILE_START, zorder=3)
-    ax.scatter(start.x + 0.5, start.y + 0.5, c='white', s=60, zorder=5, marker='o', label='Start')
-    _draw_tile(ax, int(goal.x), int(goal.y), _TILE_GOAL, zorder=3)
-    ax.scatter(goal.x + 0.5, goal.y + 0.5, c='white', s=60, zorder=5, marker='*', label='Goal')
+    _draw_tile(ax, int(start.x), int(start.y), _TILE_START, zorder=5)
+    ax.scatter(start.x + 0.5, start.y + 0.5, c='white', s=60, zorder=7, marker='o', label='Start')
+    _draw_tile(ax, int(goal.x), int(goal.y), _TILE_GOAL, zorder=5)
+    ax.scatter(goal.x + 0.5, goal.y + 0.5, c='white', s=60, zorder=7, marker='*', label='Goal')
 
 
 def draw_robot(ax, x, y, theta, radius):
@@ -161,10 +178,7 @@ def plot_final_path(ax, path, map_info, dynamics_model, start, goal, title="Fina
     draw_obstacles(ax, dynamics_model)
 
     if path:
-        xs = [s.x for s in path]
-        ys = [s.y for s in path]
-        ax.plot(xs, ys, color='yellow', linewidth=2, label='Path', zorder=6)
-        ax.scatter(xs, ys, c='yellow', s=15, zorder=7)
+        draw_path_tiles(ax, path)
 
     draw_start_goal(ax, start, goal)
     _set_axes(ax, map_info.grid)
