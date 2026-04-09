@@ -11,32 +11,69 @@ from utils import update_obstacles
 
 
 # ============================================================================
+# ACTIVATE-STYLE COLOR PALETTE
+# ============================================================================
+
+_BG_COLOR     = '#111111'   # dark floor between tiles
+_TILE_FREE    = '#3a3a3a'   # grey tile (free space)
+_TILE_GOAL    = '#00cc44'   # bright green (goal)
+_TILE_STATIC  = '#cc2200'   # red (static obstacle)
+_TILE_DYNAMIC = '#ff6600'   # orange (dynamic obstacle)
+_TILE_START   = '#0088ff'   # blue (start position)
+_TILE_PAD     = 0.07        # fraction of cell used as gap between tiles
+
+
+# ============================================================================
 # PRIMITIVE DRAW HELPERS
 # ============================================================================
 
+def _draw_tile(ax, col, row, color, zorder=1):
+    """Draw a single padded tile at grid cell (col, row)."""
+    p = _TILE_PAD
+    ax.add_patch(plt.Rectangle(
+        (col + p, row + p), 1 - 2 * p, 1 - 2 * p,
+        facecolor=color, edgecolor='none', zorder=zorder
+    ))
+
+
+def draw_grid_background(ax, grid):
+    """Draw all cells as grey tiles on a dark background (Activate floor look)."""
+    rows, cols = grid.shape
+    ax.set_facecolor(_BG_COLOR)
+    for r in range(rows):
+        for c in range(cols):
+            _draw_tile(ax, c, r, _TILE_FREE)
+
+
 def draw_obstacles(ax, dynamics_model):
-    """Draw static (black) and dynamic (red) obstacles."""
+    """Draw static (red) and dynamic (orange) obstacle tiles."""
     for obs in dynamics_model.static_obstacles:
-        ax.add_patch(plt.Rectangle(
-            (obs.x, obs.y), obs.w, obs.h,
-            edgecolor='black', facecolor='black'
-        ))
+        for r in range(int(obs.y), int(obs.y + obs.h)):
+            for c in range(int(obs.x), int(obs.x + obs.w)):
+                _draw_tile(ax, c, r, _TILE_STATIC, zorder=2)
     for obs in dynamics_model.dynamic_obstacles:
-        ax.add_patch(plt.Rectangle(
-            (obs.x, obs.y), obs.w, obs.h,
-            edgecolor='red', facecolor='red', alpha=0.6
-        ))
+        for r in range(int(obs.y), int(obs.y + obs.h)):
+            for c in range(int(obs.x), int(obs.x + obs.w)):
+                _draw_tile(ax, c, r, _TILE_DYNAMIC, zorder=2)
+
+
+def draw_goal_tiles(ax, goals):
+    """Draw goal cells as bright green tiles."""
+    for (gx, gy) in goals:
+        _draw_tile(ax, int(gx), int(gy), _TILE_GOAL, zorder=3)
 
 
 def draw_start_goal(ax, start, goal):
-    """Draw start (green) and goal (yellow) markers."""
-    ax.scatter(start.x, start.y, c='green', s=100, zorder=5, label='Start')
-    ax.scatter(goal.x, goal.y, c='yellow', s=100, zorder=5, label='Goal')
+    """Draw start (blue tile + marker) and goal (green tile + marker)."""
+    _draw_tile(ax, int(start.x), int(start.y), _TILE_START, zorder=3)
+    ax.scatter(start.x + 0.5, start.y + 0.5, c='white', s=60, zorder=5, marker='o', label='Start')
+    _draw_tile(ax, int(goal.x), int(goal.y), _TILE_GOAL, zorder=3)
+    ax.scatter(goal.x + 0.5, goal.y + 0.5, c='white', s=60, zorder=5, marker='*', label='Goal')
 
 
 def draw_robot(ax, x, y, theta, radius):
     """Draw robot as a filled circle with a heading line."""
-    robot = Circle((x, y), radius=radius, color='blue', zorder=6)
+    robot = Circle((x, y), radius=radius, color='cyan', zorder=6)
     ax.add_patch(robot)
     hx = x + radius * np.cos(theta)
     hy = y + radius * np.sin(theta)
@@ -46,6 +83,8 @@ def draw_robot(ax, x, y, theta, radius):
 def _set_axes(ax, grid):
     ax.set_xlim(0, grid.shape[1])
     ax.set_ylim(grid.shape[0], 0)
+    ax.set_xticks([])
+    ax.set_yticks([])
 
 
 # ============================================================================
@@ -53,13 +92,13 @@ def _set_axes(ax, grid):
 # ============================================================================
 
 def draw_rrt_tree(ax, tree, path=None):
-    """Draw RRT tree edges (blue) and optional final path (yellow)."""
+    """Draw RRT tree edges (cyan) and optional final path (yellow)."""
     for node in tree.nodes:
         if node.parent is not None:
             ax.plot(
                 [node.state.x, node.parent.state.x],
                 [node.state.y, node.parent.state.y],
-                color='blue', linewidth=0.5, alpha=0.6
+                color='cyan', linewidth=0.5, alpha=0.4, zorder=4
             )
     if path is not None:
         xs = [s.x for s in path]
@@ -85,8 +124,9 @@ def render_planning_step(ax, payload, map_info, dynamics_model, start, goal):
         current_node (State)       : robot's current position (execution phase)
     """
     ax.clear()
-    ax.set_facecolor('white')
     update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
+    draw_grid_background(ax, map_info.grid)
+    draw_goal_tiles(ax, map_info.goals)
     draw_obstacles(ax, dynamics_model)
 
     tree = payload.get("tree")
@@ -101,32 +141,37 @@ def render_planning_step(ax, payload, map_info, dynamics_model, start, goal):
 
     current_node = payload.get("current_node")
     if current_node is not None:
-        ax.scatter(current_node.x, current_node.y, c='cyan', s=80, zorder=5, label='Robot')
+        ax.scatter(current_node.x, current_node.y, c='cyan', s=80, zorder=5, label='Robot', edgecolors='white', linewidths=0.5)
 
     draw_start_goal(ax, start, goal)
     _set_axes(ax, map_info.grid)
+    ax.figure.patch.set_facecolor('#222222')
 
-    planner  = payload.get("planner", "Planner")
-    phase    = payload.get("phase", "planning")
+    planner   = payload.get("planner", "Planner")
+    phase     = payload.get("phase", "planning")
     iteration = payload.get("iteration", "?")
-    ax.set_title(f"{planner} | {phase} | iter={iteration}")
+    ax.set_title(f"{planner} | {phase} | iter={iteration}", color='white')
 
 
 def plot_final_path(ax, path, map_info, dynamics_model, start, goal, title="Final Path"):
     """Show the final planned path on a clean map."""
     ax.clear()
+    draw_grid_background(ax, map_info.grid)
+    draw_goal_tiles(ax, map_info.goals)
     draw_obstacles(ax, dynamics_model)
 
     if path:
         xs = [s.x for s in path]
         ys = [s.y for s in path]
-        ax.plot(xs, ys, color='blue', linewidth=2, label='Path')
-        ax.scatter(xs, ys, c='blue', s=10)
+        ax.plot(xs, ys, color='yellow', linewidth=2, label='Path', zorder=6)
+        ax.scatter(xs, ys, c='yellow', s=15, zorder=7)
 
     draw_start_goal(ax, start, goal)
     _set_axes(ax, map_info.grid)
-    ax.set_title(title)
-    ax.legend()
+    ax.set_title(title, color='white')
+    ax.set_facecolor(_BG_COLOR)
+    ax.figure.patch.set_facecolor('#222222')
+    ax.legend(facecolor='#333333', labelcolor='white')
 
 
 # ============================================================================
@@ -139,6 +184,7 @@ def animate_execution(full_traj, dynamics_model, map_info, start, goal):
 
     plt.ion()
     fig, ax = plt.subplots()
+    fig.patch.set_facecolor('#222222')
 
     for i, (x, y, theta) in enumerate(full_traj):
 
@@ -150,12 +196,14 @@ def animate_execution(full_traj, dynamics_model, map_info, start, goal):
             if obs.collides_with_point(x, y, dynamics_model.robot_radius):
                 print(f"COLLISION at step {i}")
 
+        draw_grid_background(ax, grid)
+        draw_goal_tiles(ax, map_info.goals)
         draw_obstacles(ax, dynamics_model)
         draw_robot(ax, x, y, theta, dynamics_model.robot_radius)
         draw_start_goal(ax, start, goal)
 
         _set_axes(ax, grid)
-        ax.set_title(f"Execution (step {i})")
+        ax.set_title(f"Execution (step {i})", color='white')
 
         plt.pause(0.01)
 
