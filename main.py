@@ -6,225 +6,81 @@ It will also handle the visualization of the maps and the paths found by the alg
 
 import matplotlib.pyplot as plt
 from maps import get_map
-import numpy as np
-from matplotlib.patches import Circle
-from dynamics import RobotDynamics
-from dynamics import State
+from dynamics import RobotDynamics, State
 from path_planner import plan_rrt, plan_rrt_star
-from utils import update_obstacles
+from visualization import plot_final_path, render_planning_step, animate_execution
+from config import RRT_STAR_VIZ_INTERVAL
 
 def reset_all_dynamic_obstacles(dynamic_obstacles):
     for obs in dynamic_obstacles:
         obs.reset_dynamic_obstacle()
 
-# =========================
-# MAIN FUNCTIONS
-# =========================
-
-def animate_execution(full_traj, dynamics_model, map_info, start, goal):
-    """
-    Animate robot following trajectory with moving obstacles.
-    """
-
-    grid = map_info.grid
-
-    plt.ion()
-    fig, ax = plt.subplots()
-
-    for i in range(len(full_traj)):
-
-        ax.clear()
-
-        x, y, theta = full_traj[i]
-
-        # =========================
-        # UPDATE DYNAMIC OBSTACLES
-        # =========================
-        for obs in dynamics_model.dynamic_obstacles:
-            obs.update(grid)
-
-        # =========================
-        # DRAW STATIC OBSTACLES
-        # =========================
-        for obs in dynamics_model.static_obstacles:
-            rect = plt.Rectangle(
-                (obs.x, obs.y),
-                obs.w,
-                obs.h,
-                edgecolor='black',
-                facecolor='black'
-            )
-            ax.add_patch(rect)
-
-        # =========================
-        # DRAW DYNAMIC OBSTACLES
-        # =========================
-        for obs in dynamics_model.dynamic_obstacles:
-            if obs.collides_with_point(x, y, dynamics_model.robot_radius):
-                print("COLLISION DETECTED")
-            rect = plt.Rectangle(
-                (obs.x, obs.y),
-                obs.w,
-                obs.h,
-                edgecolor='red',
-                facecolor='red'
-            )
-            ax.add_patch(rect)
-
-        # =========================
-        # DRAW ROBOT (circle + heading)
-        # =========================
-        radius = dynamics_model.robot_radius
-
-        robot = Circle((x, y), radius=radius, color='blue')
-        ax.add_patch(robot)
-
-        # heading line
-        hx = x + radius * np.cos(theta)
-        hy = y + radius * np.sin(theta)
-        ax.plot([x, hx], [y, hy], color='white', linewidth=2)
-
-        # =========================
-        # DRAW START / GOAL
-        # =========================
-        ax.scatter(start.x, start.y, c='green', s=100)
-        ax.scatter(goal.x, goal.y, c='yellow', s=100)
-
-        # =========================
-        # SETTINGS
-        # =========================
-        ax.set_xlim(0, grid.shape[1])
-        ax.set_ylim(grid.shape[0], 0)
-        ax.set_title(f"Execution (step {i})")
-
-        plt.pause(0.01)
-
-    plt.ioff()
-    plt.show()
-
 def RRT_tester(map_name):
-    # =========================
-    # Load map
-    # =========================
     m = get_map(map_name)
-    grid = m.grid
-
-    # =========================
-    # Setup dynamics
-    # =========================
     dynamics_model = RobotDynamics()
-    dynamics_model.grid = grid
-
+    dynamics_model.grid = m.grid
     dynamics_model.static_obstacles = m.static_obstacles
     dynamics_model.dynamic_obstacles = m.dynamic_obstacles
-    print("STATIC OBSTACLES:", dynamics_model.static_obstacles)
-    print("COUNT:", len(dynamics_model.static_obstacles))
 
-    # =========================
-    # Convert start/goal to State
-    # =========================
-    # NOTE: (row, col) → (x, y)
     start = State(m.start[1], m.start[0], 0)
     goal = State(m.goals[0][1], m.goals[0][0], 0)
+    print(f"Start: {start}  Goal: {goal}")
 
-    print(f"Start: {start}")
-    print(f"Goal: {goal}")
+    path = plan_rrt(start=start, goal=goal, map_info=m, dynamics_model=dynamics_model,
+                    step_size=0.5, max_iterations=3000, goal_threshold=1.0)
 
-    # =========================
-    # Visualization setup
-    # =========================
-    plt.ion()
+    if path is None:
+        print("No path found.")
+        return
+
+    print(f"Path length: {len(path)}")
+
     fig, ax = plt.subplots()
+    plot_final_path(ax, path, m, dynamics_model, start, goal, title="RRT Final Path")
+    plt.pause(0.1)
 
-    # =========================
-    # Run RRT
-    # =========================
-    path = plan_rrt(start = start, goal = goal, map_info = m, dynamics_model = dynamics_model, ax = ax, step_size = 0.5, max_iterations = 3000, goal_threshold = 1.0)
+    full_traj = dynamics_model.simulate_trajectory(path)
+    reset_all_dynamic_obstacles(dynamics_model.dynamic_obstacles)
+    animate_execution(full_traj, dynamics_model, m, start, goal)
 
-    if path is None:
-        print("No path found.")
-    else:
-        print(f"Path length: {len(path)}")
-
-        full_traj = dynamics_model.simulate_trajectory(path)
-
-        print(f"Simulated trajectory length: {len(full_traj)}")
-        reset_all_dynamic_obstacles(dynamics_model.dynamic_obstacles)
-        animate_execution(full_traj, dynamics_model, m, start, goal)
-
-    # =========================
-    # Final display
-    # =========================
-    plt.ioff()
-
-    if path is None:
-        print("No path found.")
-    else:
-        print(f"Path length: {len(path)}")
-
-    plt.show()
 
 def RRT_star_tester(map_name):
-    # =========================
-    # Load map
-    # =========================
     m = get_map(map_name)
-    grid = m.grid
-
-    # =========================
-    # Setup dynamics
-    # =========================
     dynamics_model = RobotDynamics()
-    dynamics_model.grid = grid
-
+    dynamics_model.grid = m.grid
     dynamics_model.static_obstacles = m.static_obstacles
     dynamics_model.dynamic_obstacles = m.dynamic_obstacles
-    print("STATIC OBSTACLES:", dynamics_model.static_obstacles)
-    print("COUNT:", len(dynamics_model.static_obstacles))
 
-    # =========================
-    # Convert start/goal to State
-    # =========================
-    # NOTE: (row, col) → (x, y)
     start = State(m.start[1], m.start[0], 0)
     goal = State(m.goals[0][1], m.goals[0][0], 0)
+    print(f"Start: {start}  Goal: {goal}")
 
-    print(f"Start: {start}")
-    print(f"Goal: {goal}")
-
-    # =========================
-    # Visualization setup
-    # =========================
     plt.ion()
     fig, ax = plt.subplots()
 
-    # =========================
-    # Run RRT
-    # =========================
-    path = plan_rrt_star(start = start, goal = goal, map_info = m, dynamics_model = dynamics_model, ax = ax, step_size = 0.5, max_iterations = 3000, goal_threshold = 1.0)
+    def on_viz(payload):
+        render_planning_step(ax, payload, m, dynamics_model, start, goal)
+        plt.pause(0.01)
 
-    if path is None:
-        print("No path found.")
-    else:
-        print(f"Path length: {len(path)}")
+    path = plan_rrt_star(start=start, goal=goal, map_info=m, dynamics_model=dynamics_model,
+                         step_size=0.5, max_iterations=3000, goal_threshold=1.0,
+                         viz_callback=on_viz, viz_interval=RRT_STAR_VIZ_INTERVAL)
 
-        full_traj = dynamics_model.simulate_trajectory(path)
-
-        print(f"Simulated trajectory length: {len(full_traj)}")
-        reset_all_dynamic_obstacles(dynamics_model.dynamic_obstacles)
-        animate_execution(full_traj, dynamics_model, m, start, goal)
-
-    # =========================
-    # Final display
-    # =========================
     plt.ioff()
 
     if path is None:
         print("No path found.")
-    else:
-        print(f"Path length: {len(path)}")
+        return
 
-    plt.show()
+    print(f"Path length: {len(path)}")
+
+    fig, ax = plt.subplots()
+    plot_final_path(ax, path, m, dynamics_model, start, goal, title="RRT* Final Path")
+    plt.pause(0.1)
+
+    full_traj = dynamics_model.simulate_trajectory(path)
+    reset_all_dynamic_obstacles(dynamics_model.dynamic_obstacles)
+    animate_execution(full_traj, dynamics_model, m, start, goal)
 
 # =========================
 # RUN HERE
