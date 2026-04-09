@@ -7,6 +7,7 @@ dynamics code should remain free of any visualization logic.
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
+from utils import update_obstacles
 
 
 # ============================================================================
@@ -85,6 +86,7 @@ def render_planning_step(ax, payload, map_info, dynamics_model, start, goal):
     """
     ax.clear()
     ax.set_facecolor('white')
+    update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
     draw_obstacles(ax, dynamics_model)
 
     tree = payload.get("tree")
