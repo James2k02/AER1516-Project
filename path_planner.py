@@ -306,9 +306,7 @@ import math
 import time
 import random
 import numpy as np
-import matplotlib.pyplot as plt
 from dynamics import State
-from utils import update_obstacles
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -649,85 +647,7 @@ def extract_path(goal_node: TreeNode) -> List[State]:
 # TODO 10: MAIN RRT PLANNING LOOP
 # ============================================================================
 
-def plot_final_path(ax, path, map_info, dynamics_model, start, goal):
-    """
-    Plot final RRT path on the map.
-    """
-
-    ax.clear()
-    grid = map_info.grid
-
-    # =========================
-    # Draw static obstacles
-    # =========================
-    for obs in dynamics_model.static_obstacles:
-        rect = plt.Rectangle(
-            (obs.x, obs.y),
-            obs.w,
-            obs.h,
-            edgecolor='black',
-            facecolor='black'
-        )
-        ax.add_patch(rect)
-
-    # =========================
-    # Draw dynamic obstacles (initial positions)
-    # =========================
-    for obs in dynamics_model.dynamic_obstacles:
-        rect = plt.Rectangle(
-            (obs.x, obs.y),
-            obs.w,
-            obs.h,
-            edgecolor='red',
-            facecolor='red',
-            alpha=0.6
-        )
-        ax.add_patch(rect)
-
-    # =========================
-    # Draw path
-    # =========================
-    if path is not None and len(path) > 0:
-        xs = [s.x for s in path]
-        ys = [s.y for s in path]
-
-        ax.plot(xs, ys, color='blue', linewidth=2, label='RRT Path')
-
-        # optional: draw waypoints
-        ax.scatter(xs, ys, c='blue', s=10)
-
-    # =========================
-    # Draw start & goal
-    # =========================
-    ax.scatter(start.x, start.y, c='green', s=100, label='Start')
-    ax.scatter(goal.x, goal.y, c='yellow', s=100, label='Goal')
-
-    # =========================
-    # Formatting
-    # =========================
-    ax.set_xlim(0, grid.shape[1])
-    ax.set_ylim(grid.shape[0], 0)
-    ax.set_title("Final RRT Path")
-    ax.legend()
-
-def visualize_rrt(ax, tree, path=None):
-    """
-    Draw the RRT tree and optional final path.
-    """
-    # Draw tree edges
-    for node in tree.nodes:
-        if node.parent is not None:
-            x1, y1 = node.state.x, node.state.y
-            x2, y2 = node.parent.state.x, node.parent.state.y
-            ax.plot([x1, x2], [y1, y2], color='blue', linewidth=0.5)
-
-    # Draw final path if exists
-    if path is not None:
-        xs = [s.x for s in path]
-        ys = [s.y for s in path]
-        ax.plot(xs, ys, color='yellow', linewidth=2, label='Path')
-
-def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000, max_time=60.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05):
+def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=5000, max_time=60.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05, viz_callback=None, viz_interval: int = 20):
     """
     Main RRT planning function.
     
@@ -783,55 +703,6 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
             # 6. Add to RRT tree
             new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
             new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
-            
-            # =========================
-            # ALWAYS VISUALIZE
-            # =========================
-            if ax is not None and iterations % 20 == 0:
-                if iterations % 100 == 0:
-                    print(f"Length of tree is: {tree.size()}")
-                ax.clear()
-
-                grid = map_info.grid
-                ax.set_facecolor('white')
-
-                # =========================
-                # Draw static obstacles
-                # =========================
-                for obs in dynamics_model.static_obstacles:
-                    rect = plt.Rectangle(
-                        (obs.x, obs.y),
-                        obs.w,
-                        obs.h,
-                        edgecolor='black',
-                        facecolor='black'
-                    )
-                    ax.add_patch(rect)
-
-                # =========================
-                # Draw dynamic obstacles (optional)
-                # =========================
-                update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
-                for obs in dynamics_model.dynamic_obstacles:
-                    rect = plt.Rectangle(
-                        (obs.x, obs.y),
-                        obs.w,
-                        obs.h,
-                        edgecolor='red',
-                        facecolor='red'
-                    )
-                    ax.add_patch(rect)
-
-                visualize_rrt(ax, tree)
-
-                ax.scatter(start.x, start.y, c='green', s=100)
-                ax.scatter(goal.x, goal.y, c='red', s=100)
-
-                ax.set_title(f"RRT Growth (iter={iterations})")
-                ax.set_xlim(0, grid.shape[1])
-                ax.set_ylim(grid.shape[0], 0)
-
-                plt.pause(0.01)
 
             # 7. Check if reached point is at goal point
             if is_goal_reached(q_new, goal, goal_threshold):
@@ -839,9 +710,12 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
                 planning_time = time.time() - start_time
                 print(f"Path found in {planning_time:.2f}s, {iterations} iterations, path length: {len(path)}")
                 return path
-        
+
+        if viz_callback is not None and iterations % viz_interval == 0:
+            viz_callback({"planner": "RRT", "tree": tree, "iteration": iterations, "phase": "planning"})
+
         iterations += 1
-    
+
     # No path found
     planning_time = time.time() - start_time
     print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
@@ -850,7 +724,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, ax=None, max_iterations=5000
 # ============================================================================
 # TODO 13: MAIN RRT* PLANNING LOOP
 # ============================================================================
-def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None, max_iterations: int = 20000, max_time: float = 60.0, step_size: float = 1.0, goal_threshold: float = 0.1, p_goal_bias: float = 0.05):
+def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = 20000, max_time: float = 60.0, step_size: float = 1.0, goal_threshold: float = 0.1, p_goal_bias: float = 0.05, viz_callback=None, viz_interval: int = 20):
 
     start_time = time.time()
     iterations = 0
@@ -901,55 +775,6 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
             best_parent = q_nearest_node
             best_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
 
-            # =========================
-            # ALWAYS VISUALIZE
-            # =========================
-            if ax is not None and iterations % 20 == 0:
-                if iterations % 100 == 0:
-                    print(f"Length of tree is: {tree.size()}")
-                ax.clear()
-
-                grid = map_info.grid
-                ax.set_facecolor('white')
-
-                # =========================
-                # Draw static obstacles
-                # =========================
-                for obs in dynamics_model.static_obstacles:
-                    rect = plt.Rectangle(
-                        (obs.x, obs.y),
-                        obs.w,
-                        obs.h,
-                        edgecolor='black',
-                        facecolor='black'
-                    )
-                    ax.add_patch(rect)
-
-                # =========================
-                # Draw dynamic obstacles (optional)
-                # =========================
-                update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
-                for obs in dynamics_model.dynamic_obstacles:
-                    rect = plt.Rectangle(
-                        (obs.x, obs.y),
-                        obs.w,
-                        obs.h,
-                        edgecolor='red',
-                        facecolor='red'
-                    )
-                    ax.add_patch(rect)
-
-                visualize_rrt(ax, tree)
-
-                ax.scatter(start.x, start.y, c='green', s=100)
-                ax.scatter(goal.x, goal.y, c='red', s=100)
-
-                ax.set_title(f"RRT Growth (iter={iterations})")
-                ax.set_xlim(0, grid.shape[1])
-                ax.set_ylim(grid.shape[0], 0)
-
-                plt.pause(0.01)
-
             for neighbor in neighbors:
 
                 # traj = steer(neighbor.state, q_new, dynamics_model) # try connecting neighbor to new node
@@ -997,11 +822,13 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, ax = None
                 if goal_node is None or new_node.cost < goal_node.cost:
                     goal_node = new_node
 
+        if viz_callback is not None and iterations % viz_interval == 0:
+            viz_callback({"planner": "RRT*", "tree": tree, "iteration": iterations, "phase": "planning"})
+
         iterations += 1
 
     if goal_reached:
         path = extract_path(goal_node)
-        plot_final_path(ax, path, map_info, dynamics_model, start, goal)
         planning_time = time.time() - start_time
         print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
         return path

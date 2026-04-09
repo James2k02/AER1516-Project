@@ -97,13 +97,14 @@ class DynamicObstacle(Obstacle):
             self.vel[1] *= -1
 
     def _valid_position(self, grid, x, y):
+        # Check full extent of obstacle against grid bounds
+        if x < 0 or y < 0 or x + self.w > grid.shape[1] or y + self.h > grid.shape[0]:
+            return False
+
         for i in range(int(self.h)):
             for j in range(int(self.w)):
                 r = int(y + i)
                 c = int(x + j)
-
-                if r < 0 or r >= grid.shape[0] or c < 0 or c >= grid.shape[1]:
-                    return False
 
                 if grid[r, c] == 1:
                     return False
