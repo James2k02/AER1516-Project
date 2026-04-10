@@ -84,7 +84,7 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
         render_planning_step(ax, payload, m, dynamics_model, start, goal)
         plt.pause(0.01)
 
-    path = plan_rrt_star(
+    path, _ = plan_rrt_star(
         start=start, goal=goal, map_info=m, dynamics_model=dynamics_model,
         step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold,
         viz_callback=on_viz, viz_interval=RRT_VIZ_INTERVAL,
