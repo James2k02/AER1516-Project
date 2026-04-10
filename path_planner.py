@@ -848,19 +848,27 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
 # ============================================================================
 # FUNCTIONS FOR RRT*FND
 # ============================================================================
-def detect_future_collision(path: List[State], current_node: int, dynamics_model):
+def detect_future_collision(path: List[State], current_node: int, dynamics_model, t_current: float = 0.0):
     """
-    Check if any future edge in the path from current_node 
-    to goal collides with updated dynamic obstacles
+    Check if any future edge in the path from current_node
+    to goal collides with updated dynamic obstacles.
+
+    t_current: the global time (in obstacle timesteps * dt=0.1) at which the robot
+               is currently at current_node. Each future edge i is checked at
+               t_start = t_current + (i - current_node) * 0.1, so obstacle positions
+               are predicted consistently with how many update_obstacles() calls have run.
     """
     for i in range(current_node, len(path) - 1):
         traj = steer_full(path[i], path[i+1], dynamics_model = dynamics_model)
-        
+
         # return True if trajectory is not valid (either steering failure or collision)
         if traj is None:
             return True
-        if not is_collision_free_trajectory(traj, dynamics_model):
-            return True   
+
+        # Each path step corresponds to one obstacle update (dt=0.1 in get_position_at_time)
+        t_start = t_current + (i - current_node) * 0.1
+        if not is_collision_free_trajectory(traj, dynamics_model, t_start=t_start):
+            return True
     return False
 
 def select_branch(path: List[State], current_index: int):
@@ -947,7 +955,7 @@ def regrow(tree, current_state, goal, map_info, dynamics_model):
 # MAIN RRT*FND PLANNING LOOP
 # ============================================================================
 def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
-                      max_iterations: int = 5000, max_time: float = 10.0,
+                      max_iterations: int = 20000, max_time: float = 60.0,
                       step_size: float = 1.0, goal_threshold: float = 0.5,
                       p_goal_bias: float = 0.05, viz_callback=None, 
                       viz_interval: int = 20):
@@ -999,7 +1007,10 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
         # - check if the path ahead (the remaining portion of σ from p_current to goal) is still valid given the updated obstacle positions
         # - this involves checking all future edges in the path for collisions with the new obstacle positions
         # - if a collision is detected, we need to trigger the path repair process
-        if detect_future_collision(path, current_index, dynamics_model):
+        # t_current: each FND step calls update_obstacles once (one obstacle.update()),
+        # and get_position_at_time uses dt=0.1 internally, so global time = current_index * 0.1
+        t_current = current_index * 0.1
+        if detect_future_collision(path, current_index, dynamics_model, t_current=t_current):
                
             # IF COLLISION IS DETECTED
             # Step 3.3.1: Stop Movement
