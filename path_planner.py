@@ -108,28 +108,96 @@ class RRTTree:
 # TODO 2: RANDOM SAMPLING
 # ============================================================================
 
-def sample_random_state(map_bounds: Tuple, goal: State = None, 
+def sample_random_state(map_bounds: Tuple, goal: State = None,
                          p_goal: float = 0.05) -> State:
     """
     Sample a random configuration.
     With probability p_goal, return the goal. Otherwise, sample uniformly.
-    
+
     Args:
         map_bounds: Tuple of (x_min, x_max, y_min, y_max)
         goal: Goal state (if None, never sample goal)
         p_goal: Probability of sampling goal directly
-    
+
     Returns:
         Randomly sampled state
     """
     if goal is not None and random.random() < p_goal:
         return goal
-    
+
     # Random uniform in map bounds
     x = random.uniform(map_bounds[0], map_bounds[1])
     y = random.uniform(map_bounds[2], map_bounds[3])
     theta = random.uniform(0, 2 * math.pi)
     return State(x, y, theta)
+
+
+def sample_informed_state(start: State, goal: State, c_best: float,
+                           map_bounds: Tuple, p_goal: float = 0.05) -> State:
+    """
+    Informed RRT* sampling: draw from the prolate hyperspheroid (ellipse in 2D)
+    that contains all paths shorter than c_best.
+
+    The ellipse has:
+      - Center at the midpoint of start→goal
+      - Transverse semi-axis  a = c_best / 2
+      - Conjugate semi-axis   b = sqrt(c_best² - c_min²) / 2
+      - Major axis aligned with the start→goal direction
+
+    Samples outside map bounds are re-drawn uniformly to avoid dead loops.
+
+    Args:
+        start:      Start state
+        goal:       Goal state
+        c_best:     Current best path cost (defines ellipse size)
+        map_bounds: (x_min, x_max, y_min, y_max)
+        p_goal:     Probability of returning the goal directly
+
+    Returns:
+        Sampled State
+    """
+    if random.random() < p_goal:
+        return goal
+
+    c_min = math.sqrt((goal.x - start.x) ** 2 + (goal.y - start.y) ** 2)
+
+    # Degenerate case: ellipse is not larger than the straight line → uniform
+    if c_best <= c_min or c_min < 1e-6:
+        x = random.uniform(map_bounds[0], map_bounds[1])
+        y = random.uniform(map_bounds[2], map_bounds[3])
+        return State(x, y, random.uniform(0, 2 * math.pi))
+
+    # Ellipse semi-axes
+    a = c_best / 2.0
+    b = math.sqrt(max(c_best ** 2 - c_min ** 2, 0.0)) / 2.0
+
+    # Rotation matrix aligning x-axis with start→goal
+    dx = (goal.x - start.x) / c_min
+    dy = (goal.y - start.y) / c_min
+    C = np.array([[dx, -dy],
+                  [dy,  dx]])
+
+    # Center of ellipse
+    cx = (start.x + goal.x) / 2.0
+    cy = (start.y + goal.y) / 2.0
+
+    # Sample uniformly from unit disk, then transform to ellipse
+    for _ in range(100):  # retry if sample lands outside map
+        angle = random.uniform(0, 2 * math.pi)
+        r = math.sqrt(random.uniform(0, 1))  # uniform over disk area
+        x_ball = np.array([r * math.cos(angle), r * math.sin(angle)])
+
+        # Scale to ellipse, then rotate and translate
+        x_rand = C @ np.array([a * x_ball[0], b * x_ball[1]]) + np.array([cx, cy])
+
+        x, y = x_rand[0], x_rand[1]
+        if map_bounds[0] <= x <= map_bounds[1] and map_bounds[2] <= y <= map_bounds[3]:
+            return State(x, y, random.uniform(0, 2 * math.pi))
+
+    # Fallback to uniform if all retries land outside bounds
+    x = random.uniform(map_bounds[0], map_bounds[1])
+    y = random.uniform(map_bounds[2], map_bounds[3])
+    return State(x, y, random.uniform(0, 2 * math.pi))
 
 
 # ============================================================================
@@ -466,14 +534,18 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
 
     goal_reached = False
     goal_node = None
+    c_best = float('inf')  # best path cost found so far (used for informed sampling)
 
     while iterations < max_iterations:
         # Time check
         if time.time() - start_time > max_time:
             break
 
-        # Step 1: Sample random configuration (with goal biasing))
-        q_rand = sample_random_state(map_bounds, goal = goal, p_goal = p_goal_bias)
+        # Step 1: Sample configuration — use informed ellipse once a solution exists
+        if goal_reached:
+            q_rand = sample_informed_state(start, goal, c_best, map_bounds, p_goal=p_goal_bias)
+        else:
+            q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
 
         # Step 2: Find nearest node in tree
         q_nearest_node = nearest_node(tree, q_rand)
@@ -533,6 +605,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
                 goal_reached = True
                 if goal_node is None or new_node.cost < goal_node.cost:
                     goal_node = new_node
+                    c_best = new_node.cost  # tighten ellipse around better solution
 
         if viz_callback is not None and iterations % viz_interval == 0:
             viz_callback({"planner": "RRT*", "tree": tree, "iteration": iterations, "phase": "planning"})
@@ -813,4 +886,83 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
     # - Once p_current is within the goal threshold, we can terminate and return the final path taken to reach the goal
             
     return executed_path # placeholder
+
+
+# ============================================================================
+# MULTI-GOAL ORCHESTRATOR
+# ============================================================================
+
+def plan_multi_goal(
+    start: State,
+    goals: List[State],
+    map_info,
+    dynamics_model,
+    planner: str = "rrt_star",
+    **kwargs
+) -> Optional[List[State]]:
+    """
+    Plan a path through multiple goals sequentially using a greedy nearest-neighbor
+    ordering: at each step, the unvisited goal closest to the current position is
+    chosen next.  The selected planner is run for each segment and the resulting
+    paths are concatenated (shared junction waypoints are not duplicated).
+
+    Args:
+        start:          Starting state.
+        goals:          List of goal states to visit (order will be determined here).
+        map_info:       Map info passed through to the planner.
+        dynamics_model: Robot dynamics passed through to the planner.
+        planner:        Which planner to use — "rrt", "rrt_star", or "rrt_fnd".
+        **kwargs:       Extra keyword arguments forwarded to the underlying planner
+                        (e.g. max_iterations, step_size, viz_callback, …).
+
+    Returns:
+        Concatenated path through all goals as a list of States, or None if any
+        segment fails to find a path.
+    """
+    if not goals:
+        return []
+
+    # Greedy nearest-neighbor ordering from current position
+    remaining = list(goals)
+    ordered_goals: List[State] = []
+    current_pos = start
+    while remaining:
+        nearest = min(remaining, key=lambda g: State.state_distance(current_pos, g))
+        ordered_goals.append(nearest)
+        remaining.remove(nearest)
+        current_pos = nearest
+
+    print(f"[Multi-Goal] Visit order: {['({:.1f},{:.1f})'.format(g.x, g.y) for g in ordered_goals]}")
+
+    full_path: List[State] = []
+    current_start = start
+
+    for i, goal in enumerate(ordered_goals):
+        print(f"[Multi-Goal] Segment {i + 1}/{len(ordered_goals)}: "
+              f"({current_start.x:.1f},{current_start.y:.1f}) → ({goal.x:.1f},{goal.y:.1f})")
+
+        if planner == "rrt":
+            segment = plan_rrt(current_start, goal, map_info, dynamics_model, **kwargs)
+        elif planner == "rrt_star":
+            segment, _ = plan_rrt_star(current_start, goal, map_info, dynamics_model, **kwargs)
+        elif planner == "rrt_fnd":
+            segment = plan_rrt_star_fnd(current_start, goal, map_info, dynamics_model, **kwargs)
+        else:
+            raise ValueError(f"[Multi-Goal] Unknown planner '{planner}'. "
+                             "Choose from: 'rrt', 'rrt_star', 'rrt_fnd'.")
+
+        if segment is None:
+            print(f"[Multi-Goal] Failed to find path to goal {i + 1} — aborting.")
+            return None
+
+        if full_path:
+            full_path += segment[1:]  # skip the shared junction waypoint
+        else:
+            full_path = list(segment)
+
+        current_start = goal
+
+    print(f"[Multi-Goal] Done — {len(full_path)} total waypoints across "
+          f"{len(ordered_goals)} segment(s).")
+    return full_path
     
