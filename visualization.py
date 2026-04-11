@@ -179,6 +179,10 @@ def plot_final_path(ax, path, map_info, dynamics_model, start, goal, title="Fina
 
     if path:
         draw_path_tiles(ax, path)
+        xs = [s.x for s in path]
+        ys = [s.y for s in path]
+        ax.plot(xs, ys, color='yellow', linewidth=2, label='Path', zorder=6)
+        ax.scatter(xs, ys, c='yellow', s=15, zorder=6)
 
     draw_start_goal(ax, start, goal)
     _set_axes(ax, map_info.grid)
