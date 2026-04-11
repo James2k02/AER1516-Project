@@ -258,6 +258,10 @@ def animate_path_execution(path, dynamics_model, map_info, start, goal):
 
         theta = math.atan2(dy, dx)
 
+        # Update dynamic obstacle positions each step
+        for obs in dynamics_model.dynamic_obstacles:
+            obs.update(map_info.grid)
+
         draw_grid_background(ax, map_info.grid)
         draw_goal_tiles(ax, map_info.goals)
         draw_obstacles(ax, dynamics_model)
