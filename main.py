@@ -33,7 +33,7 @@ def _execute(path, dynamics_model, m, start, goals):
     """Simulate and animate the robot following the planned path."""
     for obs in dynamics_model.dynamic_obstacles:
         obs.reset_dynamic_obstacle()
-    animate_path_execution(path, dynamics_model, m, start, goals[-1])
+    animate_path_execution(path, dynamics_model, m, start, goals)
 
 
 # ---------------------------------------------------------
@@ -48,7 +48,7 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
     _, ax = plt.subplots()
 
     def on_viz(payload):
-        render_planning_step(ax, payload, m, dynamics_model, start, goals[-1])
+        render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
 
     path = plan_multi_goal(
@@ -64,7 +64,7 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
         return
 
     print(f"Path found — {len(path)} waypoints")
-    plot_final_path(ax, path, m, dynamics_model, start, goals[-1], title="RRT Final Path")
+    plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT Final Path")
     plt.pause(0.1)
     _execute(path, dynamics_model, m, start, goals)
 
@@ -81,7 +81,7 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
     _, ax = plt.subplots()
 
     def on_viz(payload):
-        render_planning_step(ax, payload, m, dynamics_model, start, goals[-1])
+        render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
 
     path = plan_multi_goal(
@@ -97,7 +97,7 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
         return
 
     print(f"Path found — {len(path)} waypoints")
-    plot_final_path(ax, path, m, dynamics_model, start, goals[-1], title="RRT* Final Path")
+    plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT* Final Path")
     plt.pause(0.1)
     _execute(path, dynamics_model, m, start, goals)
 
@@ -112,7 +112,7 @@ def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=
     plt.ion()
     _, ax = plt.subplots()
     def on_viz(payload):
-        render_planning_step(ax, payload, m, dynamics_model, start, goals[-1])
+        render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
 
     path = plan_multi_goal(
@@ -129,7 +129,7 @@ def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=
         return
 
     print(f"Path found — {len(path)} waypoints")
-    plot_final_path(ax, path, m, dynamics_model, start, goals[-1], title="RRT*-FND Final Path")
+    plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT*-FND Final Path")
     plt.pause(0.1)
     _execute(path, dynamics_model, m, start, goals)
 
