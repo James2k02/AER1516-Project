@@ -1,7 +1,7 @@
 from typing import List, Tuple, NamedTuple
 import math
 import numpy as np
- 
+from config import GOAL_SUCCESS_THRESH 
  
 class State(NamedTuple):
     """
@@ -52,9 +52,9 @@ class RobotDynamics:
     Dynamics team fills in the implementations.
     """
     def __init__(self):
-        self.max_vel = 3.0
+        self.max_vel = 3.0 # m/s
         self.max_angular_vel = 1.5
-        self.robot_radius = 0.15 #m
+        self.robot_radius = 0.15 # m
 
         self.grid = None
         self.static_obstacles = []
@@ -89,7 +89,7 @@ class RobotDynamics:
         dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
 
         # Gains (tune these!)
-        v_gain = 0.9
+        v_gain = 1.0
         omega_gain = 2.5
 
         # Control
@@ -102,13 +102,13 @@ class RobotDynamics:
 
         return v, omega
     
-    def trajectory(self, state: State, v: float, omega: float, num_substeps: int = 15):
+    def trajectory(self, state: State, v: float, omega: float, num_substeps: int = 10):
         """
         Forward simulate robot dynamics given constant (v, omega).
         Returns Nx3 numpy array.
         """
 
-        dt = 1.0 / num_substeps
+        dt = 0.5 / num_substeps
 
         trajectory = np.zeros((num_substeps, 3))
 
@@ -140,7 +140,7 @@ class RobotDynamics:
 
         return True
     
-    def simulate_trajectory(self, path, goal_tolerance = 0.1):
+    def simulate_trajectory(self, path, goal_tolerance = GOAL_SUCCESS_THRESH):
         """
         Simulate robot following a path using controller + dynamics.
 
