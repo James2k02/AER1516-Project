@@ -581,21 +581,44 @@ def edge_cost(s1: State, s2: State, dynamics_model=None) -> float:
 
 
 # ============================================================================
-# TODO 7: REWIRING (RRT* - FUTURE)
+#  REWIRING (RRT*)
 # ============================================================================
 
 def rewire_neighbors(tree: RRTTree, new_node: TreeNode, radius: float, dynamics_model=None):
     """
     RRT* rewiring: optimize tree by rerouting through cheaper paths.
-    
+
     Args:
         tree: RRT tree
         new_node: Newly added node to rewire around
         radius: Search radius for neighbors
         dynamics_model: Robot dynamics (for cost computation)
     """
-    # TODO: Implement RRT* rewiring
-    pass
+    # Find all neighbors within radius of new_node
+    neighbors = tree.get_neighbors_in_radius(new_node.state, radius)
+
+    for neighbor in neighbors:
+        # Skip the new node itself
+        if neighbor == new_node:
+            continue
+
+        # Calculate cost if we rewire through new_node
+        edge_cost_value = edge_cost(new_node.state, neighbor.state, dynamics_model)
+        new_path_cost = new_node.cost + edge_cost_value
+
+        # Only consider rewiring if path is cheaper
+        if new_path_cost < neighbor.cost:
+            # Check if path from new_node to neighbor is collision-free
+            trajectory = steer_full(new_node.state, neighbor.state, dynamics_model)
+            if is_collision_free_trajectory(trajectory, dynamics_model):
+                # Rewire: update parent and cost
+                neighbor.parent.children.remove(neighbor)
+                new_node.children.append(neighbor)
+                neighbor.parent = new_node
+                neighbor.cost = new_path_cost
+
+                # Propagate cost changes to all descendants
+                propagate_cost(neighbor)
 
 
 def propagate_cost(node: TreeNode):
@@ -609,7 +632,7 @@ def propagate_cost(node: TreeNode):
 
 
 # ============================================================================
-# TODO 8: GOAL DETECTION & TERMINATION
+#  GOAL DETECTION & TERMINATION
 # ============================================================================
 
 def is_goal_reached(node_state: State, goal: State, threshold: float = 0.1) -> bool:
@@ -628,7 +651,7 @@ def is_goal_reached(node_state: State, goal: State, threshold: float = 0.1) -> b
 
 
 # ============================================================================
-# TODO 9: PATH EXTRACTION & RECONSTRUCTION
+# PATH EXTRACTION & RECONSTRUCTION
 # ============================================================================
 
 def extract_path(goal_node: TreeNode) -> List[State]:
@@ -652,7 +675,7 @@ def extract_path(goal_node: TreeNode) -> List[State]:
     return path
 
 # ============================================================================
-# TODO 10: MAIN RRT PLANNING LOOP
+# MAIN RRT PLANNING LOOP
 # ============================================================================
 
 def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=5000, max_time=60.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05, viz_callback=None, viz_interval: int = 20):
@@ -730,7 +753,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=5000, max_tim
     return None
 
 # ============================================================================
-# TODO 13: MAIN RRT* PLANNING LOOP
+# MAIN RRT* PLANNING LOOP
 # ============================================================================
 def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = 20000, max_time: float = 60.0, step_size: float = 1.0, goal_threshold: float = 0.1, p_goal_bias: float = 0.05, viz_callback=None, viz_interval: int = 20, tree = None):
 
@@ -803,27 +826,8 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
             # Step 7: Add new node to tree with best parent and cost
             new_node = tree.add_node(q_new, parent = best_parent, cost = best_cost)
 
-            # Step 8: Rewire neighbors (optimization step) -> check if going through new node is cheaper for any of the neighbors
-            for neighbor in neighbors:
-
-                # traj = steer(q_new, neighbor.state, dynamics_model) # try connecting new node to neighbor (reverse direction from before; new node is now the parent)
-                traj = steer_full(q_new, neighbor.state, dynamics_model)  # no cap: must reach neighbor
-                if traj is None:
-                    continue
-
-                if not is_collision_free_trajectory(traj, dynamics_model, t_start=0.0):
-                    continue
-
-                new_cost = new_node.cost + edge_cost(q_new, neighbor.state, dynamics_model)
-
-                if new_cost < neighbor.cost:
-                    old_parent = neighbor.parent
-                    if old_parent is not None:
-                        old_parent.children.remove(neighbor)
-                    neighbor.parent = new_node
-                    new_node.children.append(neighbor)
-                    neighbor.cost = new_cost
-                    propagate_cost(neighbor)  # update all descendants
+            # Step 8: Rewire neighbors (optimization step)
+            rewire_neighbors(tree, new_node, radius, dynamics_model)
 
             # Step 9: Check if goal reached — keep cheapest goal node found
             if is_goal_reached(q_new, goal, goal_threshold):
