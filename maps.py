@@ -187,22 +187,24 @@ def narrow_passage():
 
     # simple obstacles - (x, y, w, h)
     static_obstacles = create_boundary_obstacles(20, 20) + [
-        # wall 1 (left + right of gap)
-        StaticObstacle(0, 4, 15, 2),
+        # wall 1 
+        StaticObstacle(0, 4, 14, 2),
         StaticObstacle(16, 4, 4, 2),
 
-        # wall 2 (full)
-        StaticObstacle(0, 9, 20, 1),
+        # wall 2 
+        # StaticObstacle(0, 9, 20, 1), --> add back if you want to try jumping (remove the two lines below)
+        StaticObstacle(0, 9, 5, 1),
+        StaticObstacle(7, 9, 13, 1),
 
-        # wall 3 (left + right of gap)
-        StaticObstacle(0, 13, 6, 2),
+        # wall 3 
+        StaticObstacle(0, 13, 5, 2),
         StaticObstacle(7, 13, 13, 2),
     ]
 
     dynamic_obstacles = []
 
-    start = (2, 2)
-    goals = [(17, 17)]
+    start = (18.5, 18.5)
+    goals = [(2.5, 9.5)]
 
     return Map(grid, start, goals, "Narrow Passage Map w/ Jump", static_obstacles, dynamic_obstacles)
 
@@ -216,31 +218,31 @@ def multi_passage():
     static_obstacles = create_boundary_obstacles(20, 20) + [
         # y = 4
         StaticObstacle(0, 4, 2, 1),
-        StaticObstacle(3, 4, 9, 1),
-        StaticObstacle(13, 4, 7, 1),
+        StaticObstacle(4, 4, 9, 1),
+        StaticObstacle(15, 4, 7, 1),
 
         # y = 8
-        StaticObstacle(0, 8, 6, 1),
-        StaticObstacle(7, 8, 9, 1),
+        StaticObstacle(0, 8, 5, 1),
+        StaticObstacle(7, 8, 8, 1),
         StaticObstacle(17, 8, 3, 1),
 
         # y = 12
-        StaticObstacle(0, 12, 3, 1),
-        Obstacle(4, 12, 3, 1),
-        StaticObstacle(8, 12, 4, 1),
-        StaticObstacle(13, 12, 7, 1),
+        StaticObstacle(0, 12, 2, 1),
+        StaticObstacle(4, 12, 2, 1),
+        StaticObstacle(8, 12, 3, 1),
+        StaticObstacle(13, 12, 6, 1),
 
         # y = 16
         StaticObstacle(0, 16, 1, 1),
-        StaticObstacle(2, 16, 5, 1),
-        StaticObstacle(8, 16, 7, 1),
-        StaticObstacle(16, 16, 4, 1),
+        StaticObstacle(3, 16, 5, 1),
+        StaticObstacle(8, 16, 6, 1),
+        StaticObstacle(16, 16, 3, 1),
     ]
 
     dynamic_obstacles = []
 
-    start = (2, 9)
-    goals = [(18, 8)]
+    start = (2.5, 9.5)
+    goals = [(18.5, 8.5)]
 
     return Map(grid, start, goals, "Multi Route Map", static_obstacles, dynamic_obstacles)
 
@@ -258,8 +260,8 @@ def simple_dynamic():
         DynamicObstacle(12, 10, 2, vel=(-0.2, 0))
     ]
 
-    start = (2, 7)
-    goals = [(18, 18)]
+    start = (18.5, 8.5)
+    goals = [(2.5, 8.5)]
 
     return Map(grid, start, goals, "Simple Dynamic Map", static_obstacles, dynamic_obstacles)
 
@@ -280,20 +282,20 @@ def hard_dynamic():
         StaticObstacle(14, 5, 3, 2),
         StaticObstacle(3, 10, 2, 2),
         StaticObstacle(5, 14, 3, 3),
-        StaticObstacle(12, 15, 3, 3),
-        StaticObstacle(16, 12, 3, 2),
+        StaticObstacle(12, 15, 2, 2),
+        StaticObstacle(16, 12, 2, 2),
     ]
 
     dynamic_obstacles = [
         DynamicObstacle(1, 5, 2, vel=(0, 0.1)),
-        DynamicObstacle(9, 15, 2, vel=(0, -0.1)),
+        # DynamicObstacle(9, 15, 2, vel=(0, -0.1)),
         DynamicObstacle(11, 10, 2, vel=(0.1, 0)),
         DynamicObstacle(14, 7, 2, vel=(-0.1, 0)),
-        DynamicObstacle(12, 12, 2, vel=(0, 0.1)),
+        # DynamicObstacle(12, 12, 2, vel=(0, 0.1)),
     ]
 
-    start = (2, 8)
-    goals = [(18, 18)]
+    start = (2.5, 8.5)
+    goals = [(18.5, 18.5)]
 
     return Map(grid, start, goals, "Hard Dynamic Map", static_obstacles, dynamic_obstacles)
 
