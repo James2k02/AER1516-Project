@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from maps import get_map
 from dynamics import RobotDynamics, State
 from path_planner import plan_rrt, plan_rrt_star, plan_rrt_star_fnd
-from visualization import plot_final_path, render_planning_step, animate_execution
-from config import RRT_VIZ_INTERVAL
+from visualization import plot_final_path, render_planning_step, animate_path_execution
+from config import RRT_VIZ_INTERVAL, GOAL_SUCCESS_THRESH
 
 
 def _setup(map_name):
@@ -31,16 +31,15 @@ def _setup(map_name):
 
 def _execute(path, dynamics_model, m, start, goal):
     """Simulate and animate the robot following the planned path."""
-    full_traj = dynamics_model.simulate_trajectory(path)
     for obs in dynamics_model.dynamic_obstacles:
         obs.reset_dynamic_obstacle()
-    animate_execution(full_traj, dynamics_model, m, start, goal)
+    animate_path_execution(path, dynamics_model, m, start, goal)
 
 
 # ---------------------------------------------------------
 # RRT tester
 # ---------------------------------------------------------
-def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=0.5):
+def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goal = _setup(map_name)
     print(f"[RRT] map={map_name}  start={start}  goal={goal}")
 
@@ -72,7 +71,7 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=0.5)
 # ---------------------------------------------------------
 # RRT* tester
 # ---------------------------------------------------------
-def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=0.5):
+def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goal = _setup(map_name)
     print(f"[RRT*] map={map_name}  start={start}  goal={goal}")
 
@@ -104,7 +103,7 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
 # ---------------------------------------------------------
 # RRT*-FND tester — scaffold ready, waiting on plan_rrt_star_fnd implementation
 # ---------------------------------------------------------
-def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=1.0):
+def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goal = _setup(map_name)
     print(f"[RRT*-FND] map={map_name}  start={start}  goal={goal}")
 
@@ -142,7 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("--map",       choices=["map1", "map2", "map3", "map4", "map5"], default="map1")
     parser.add_argument("--iters",     type=int,   default=3000, help="Max iterations")
     parser.add_argument("--step",      type=float, default=0.5,  help="Step size")
-    parser.add_argument("--threshold", type=float, default=0.5,  help="Goal threshold")
+    parser.add_argument("--threshold", type=float, default=GOAL_SUCCESS_THRESH,  help="Goal threshold")
     args = parser.parse_args()
 
     kwargs = dict(max_iterations=args.iters, step_size=args.step, goal_threshold=args.threshold)

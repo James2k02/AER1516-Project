@@ -5,9 +5,11 @@ dynamics code should remain free of any visualization logic.
 """
 
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from utils import update_obstacles
+from dynamics import State
 
 
 # ============================================================================
@@ -224,6 +226,58 @@ def animate_execution(full_traj, dynamics_model, map_info, start, goal):
         ax.set_title(f"Execution (step {i})", color='white')
 
         plt.pause(0.01)
+
+    plt.ioff()
+    plt.show()
+
+def animate_path_execution(path, dynamics_model, map_info, start, goal):
+
+    if path is None or len(path) < 2:
+        return
+
+    plt.ion()
+    fig, ax = plt.subplots()
+    fig.patch.set_facecolor('#222222') # whole window background
+    ax.set_facecolor('#111111') # plot area background
+
+    time_elapsed = 0.0
+
+    for i in range(len(path)):
+
+        ax.clear()
+
+        state = path[i]
+
+        # Compute heading from next segment (if possible)
+        if i < len(path) - 1:
+            dx = path[i+1].x - state.x
+            dy = path[i+1].y - state.y
+        else:
+            dx = state.x - path[i-1].x
+            dy = state.y - path[i-1].y
+
+        theta = math.atan2(dy, dx)
+
+        draw_grid_background(ax, map_info.grid)
+        draw_goal_tiles(ax, map_info.goals)
+        draw_obstacles(ax, dynamics_model)
+
+        draw_robot(ax, state.x, state.y, theta, dynamics_model.robot_radius)
+        draw_start_goal(ax, start, goal)
+
+        _set_axes(ax, map_info.grid)
+
+        ax.set_title(f"Execution (t = {time_elapsed:.2f}s)", color='white')
+
+        # Compute time to next node
+        if i < len(path) - 1:
+            dist = path[i].distance_to(path[i+1])
+            dt = dist / dynamics_model.max_vel
+        else:
+            dt = 0.5  # small pause at end
+
+        plt.pause(dt)
+        time_elapsed += dt
 
     plt.ioff()
     plt.show()
