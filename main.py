@@ -12,47 +12,48 @@ import argparse
 import matplotlib.pyplot as plt
 from maps import get_map
 from dynamics import RobotDynamics, State
-from path_planner import plan_rrt, plan_rrt_star, plan_rrt_star_fnd
+from path_planner import plan_multi_goal
 from visualization import plot_final_path, render_planning_step, animate_path_execution
 from config import RRT_VIZ_INTERVAL, GOAL_SUCCESS_THRESH
 
 
 def _setup(map_name):
-    """Load map and wire up the dynamics model. Returns (map, dynamics_model, start, goal)."""
+    """Load map and wire up the dynamics model. Returns (map, dynamics_model, start, goals)."""
     m = get_map(map_name)
     dynamics_model = RobotDynamics()
     dynamics_model.grid = m.grid
     dynamics_model.static_obstacles = m.static_obstacles
     dynamics_model.dynamic_obstacles = m.dynamic_obstacles
     start = State(m.start[1], m.start[0], 0)
-    goal  = State(m.goals[0][1], m.goals[0][0], 0)
-    return m, dynamics_model, start, goal
+    goals = [State(g[1], g[0], 0) for g in m.goals]
+    return m, dynamics_model, start, goals
 
 
-def _execute(path, dynamics_model, m, start, goal):
+def _execute(path, dynamics_model, m, start, goals):
     """Simulate and animate the robot following the planned path."""
     for obs in dynamics_model.dynamic_obstacles:
         obs.reset_dynamic_obstacle()
-    animate_path_execution(path, dynamics_model, m, start, goal)
+    animate_path_execution(path, dynamics_model, m, start, goals)
 
 
 # ---------------------------------------------------------
 # RRT tester
 # ---------------------------------------------------------
 def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
-    m, dynamics_model, start, goal = _setup(map_name)
-    print(f"[RRT] map={map_name}  start={start}  goal={goal}")
+    m, dynamics_model, start, goals = _setup(map_name)
+    print(f"[RRT] map={map_name}  start={start}  goals={goals}")
 
     # Live tree visualization during planning
     plt.ion()
     _, ax = plt.subplots()
 
     def on_viz(payload):
-        render_planning_step(ax, payload, m, dynamics_model, start, goal)
+        render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
 
-    path = plan_rrt(
-        start=start, goal=goal, map_info=m, dynamics_model=dynamics_model,
+    path = plan_multi_goal(
+        start=start, goals=goals, map_info=m, dynamics_model=dynamics_model,
+        planner="rrt",
         step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold,
         viz_callback=on_viz, viz_interval=RRT_VIZ_INTERVAL,
     )
@@ -63,28 +64,29 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
         return
 
     print(f"Path found — {len(path)} waypoints")
-    plot_final_path(ax, path, m, dynamics_model, start, goal, title="RRT Final Path")
+    plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT Final Path")
     plt.pause(0.1)
-    _execute(path, dynamics_model, m, start, goal)
+    _execute(path, dynamics_model, m, start, goals)
 
 
 # ---------------------------------------------------------
 # RRT* tester
 # ---------------------------------------------------------
 def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
-    m, dynamics_model, start, goal = _setup(map_name)
-    print(f"[RRT*] map={map_name}  start={start}  goal={goal}")
+    m, dynamics_model, start, goals = _setup(map_name)
+    print(f"[RRT*] map={map_name}  start={start}  goals={goals}")
 
     # Live tree visualization during planning
     plt.ion()
     _, ax = plt.subplots()
 
     def on_viz(payload):
-        render_planning_step(ax, payload, m, dynamics_model, start, goal)
+        render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
 
-    path, _ = plan_rrt_star(
-        start=start, goal=goal, map_info=m, dynamics_model=dynamics_model,
+    path = plan_multi_goal(
+        start=start, goals=goals, map_info=m, dynamics_model=dynamics_model,
+        planner="rrt_star",
         step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold,
         viz_callback=on_viz, viz_interval=RRT_VIZ_INTERVAL,
     )
@@ -95,28 +97,28 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
         return
 
     print(f"Path found — {len(path)} waypoints")
-    plot_final_path(ax, path, m, dynamics_model, start, goal, title="RRT* Final Path")
+    plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT* Final Path")
     plt.pause(0.1)
-    _execute(path, dynamics_model, m, start, goal)
+    _execute(path, dynamics_model, m, start, goals)
 
 
 # ---------------------------------------------------------
 # RRT*-FND tester — scaffold ready, waiting on plan_rrt_star_fnd implementation
 # ---------------------------------------------------------
 def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
-    m, dynamics_model, start, goal = _setup(map_name)
-    print(f"[RRT*-FND] map={map_name}  start={start}  goal={goal}")
+    m, dynamics_model, start, goals = _setup(map_name)
+    print(f"[RRT*-FND] map={map_name}  start={start}  goals={goals}")
 
-    # TODO: wire up live viz once plan_rrt_star_fnd supports viz_callback
     plt.ion()
     _, ax = plt.subplots()
     def on_viz(payload):
-        render_planning_step(ax, payload, m, dynamics_model, start, goal)
+        render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
 
-    path = plan_rrt_star_fnd(
-        start=start, goal=goal, map_info=m, dynamics_model=dynamics_model,
-        step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold, 
+    path = plan_multi_goal(
+        start=start, goals=goals, map_info=m, dynamics_model=dynamics_model,
+        planner="rrt_fnd",
+        step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold,
         viz_callback=on_viz, viz_interval=RRT_VIZ_INTERVAL,
     )
 
@@ -127,9 +129,9 @@ def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=
         return
 
     print(f"Path found — {len(path)} waypoints")
-    plot_final_path(ax, path, m, dynamics_model, start, goal, title="RRT*-FND Final Path")
+    plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT*-FND Final Path")
     plt.pause(0.1)
-    _execute(path, dynamics_model, m, start, goal)
+    _execute(path, dynamics_model, m, start, goals)
 
 
 # ---------------------------------------------------------
