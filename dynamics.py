@@ -54,7 +54,7 @@ class RobotDynamics:
     def __init__(self):
         self.max_vel = 3.0
         self.max_angular_vel = 1.5
-        self.robot_radius = 0.3 #m
+        self.robot_radius = 0.15 #m
 
         self.grid = None
         self.static_obstacles = []
