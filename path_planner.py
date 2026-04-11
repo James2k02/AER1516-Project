@@ -1,306 +1,3 @@
-"""
-RRT IMPLEMENTATION OVERVIEW
-================================================================================
-
-Key components work together in the following flow:
-    1. Sample random configuration in free space
-    2. Find nearest node in existing tree
-    3. Steer from nearest node toward random sample (using robot dynamics)
-    4. Collision check the new edge (considering static + dynamic obstacles)
-    5. If collision-free, add node to tree
-    6. [RRT* FUTURE] Rewire tree to optimize costs
-    7. Check if goal is reached
-    8. Extract and return path when goal found or iteration limit hit
-
-COMPONENT BREAKDOWN & TODO LIST
-================================================================================
-
-TODO 1: STATE REPRESENTATION
---------
-Purpose: Define how we represent a configuration in the configuration space
-Details: 
-    - State format: (x, y, theta) or (x, y) depending on holonomic assumption
-    - Needs to be compatible with distance metrics and collision checking
-    - Should be easily serializable for tree storage
-Examples of what to implement:
-    - State class/namedtuple
-    - __eq__, __hash__ for tree operations
-    - Distance metric function (Euclidean)
-
-TODO 2: RANDOM SAMPLING
---------
-Purpose: Generate random, collision-free configurations to guide tree exploration
-Details:
-    - Sample uniformly in rectangular map bounds
-    - Option: Goal biasing (sample goal with probability p_goal, else uniform)
-    - Ensure samples stay within map boundaries
-    - Samples should be collision-free at time of sampling (static obstacles)
-Examples of what to implement:
-    - sample_random_config(map_bounds, p_goal=0.05)
-    - sample_uniform(bounds)
-    - boundary checking
-
-TODO 3: NEAREST NEIGHBOR SEARCH
---------
-Purpose: Find the closest existing node in the tree to a newly sampled config
-Details:
-    - Distance metric: Euclidean distance in 2D
-    - Simple version: Linear search through all nodes O(n)
-    - Optimized version: KD-tree for O(log n) lookups (future enhancement)
-    - Return the closest node object (with position, parent, cost info)
-Examples of what to implement:
-    - nearest_node(tree, config)
-    - distance function (Euclidean, with wrapping for angle if needed)
-    - Tree node data structure
-
-TODO 4: STEERING / LOCAL EDGE INTERPOLATION
---------
-Purpose: Attempt to move robot from nearest node toward random sample
-Details:
-    - Define step_size or max_extension_length (tuning parameter)
-    - Compute direction unit vector from nearest toward sample
-    - Move step_size in that direction
-    - Result may not reach the sample (that's OK, tree grows gradually)
-    - **KEY: This is where robot dynamics plug in**
-      * Simple version: straight-line interpolation at constant speed
-      * Future: hopping vs. direct movement decisions, varying speeds
-    - Return new candidate configuration
-Examples of what to implement:
-    - steer(start_state, target_state, step_size, dynamics_model)
-    - direction computation
-    - distance/speed integration (if dynamics affect travel time)
-
-TODO 5: COLLISION CHECKING
---------
-Purpose: Verify that a path segment is collision-free (most critical for safety)
-Details:
-    - **Static obstacles:** Check if line segment intersects rectangular obstacles
-    - **Dynamic obstacles:** Check if segment collides with obstacles at the time
-      the robot would traverse it (requires dynamics module input)
-    - **Robot geometry:** Handle robot as point or with footprint/radius
-    - Segment collision: Line-rectangle intersection tests
-    - **NOTE:** This is where dynamic obstacle integration happens
-      * Dynamics module tells us obstacle positions over time
-      * We compute time robot spends on edge, check collisions at those times
-Examples of what to implement:
-    - is_collision_free_trajectory(start_state, end_state, static_obstacles, 
-                       dynamic_obstacles, dynamics_model, t_start=0)
-    - line_segment_intersects_rectangle(p1, p2, rect)
-    - point_in_rectangle(point, rect)
-    - obstacle_position_at_time(obstacle, t) [delegated to dynamics module]
-    - trajectory interpolation for dense collision checking
-
-TODO 6: EDGE COST COMPUTATION
---------
-Purpose: Calculate cost (distance/time) to traverse an edge (needed for RRT*)
-Details:
-    - Simple version: Euclidean distance between nodes
-    - Better version: Incorporate robot speed and dynamics
-    - Account for hopping penalty if applicable
-      * Direct movement: distance / normal_speed
-      * Hopping: distance / hop_speed (slower)
-      * Cost should reflect actual traversal time
-    - Used for path optimization in RRT* rewiring
-Examples of what to implement:
-    - edge_cost(state1, state2, dynamics_model)
-    - cost accumulation along path
-    - speed lookup based on movement type
-
-TODO 7: REWIRING (RRT* FUTURE ENHANCEMENT)
---------
-Purpose: Optimize the tree by rerouting nodes through cheaper paths
-Details:
-    - After adding new node, find all nodes within radius r
-    - For each neighbor, check if path through new node is cheaper
-    - If cheaper, rewire: update parent pointer and accumulated cost
-    - Radius decreases as tree grows: r = k * (log(n) / n)^(1/d)
-      * n = tree size, d = dimension (2 for 2D)
-      * k is a tuning parameter
-    - Only attempt rewiring for collision-free paths
-Examples of what to implement:
-    - rewire_neighbors(tree, new_node, radius)
-    - find_neighbors_in_radius(tree, node, radius)
-    - cost comparison and parent updates
-    - NOTE: Start with basic RRT, add this later for RRT*
-
-TODO 8: GOAL DETECTION & TERMINATION
---------
-Purpose: Determine when planning is complete and path is found
-Details:
-    - Goal region: distance threshold from goal point (e.g., 0.5 units)
-    - Check if any node in tree is within threshold of goal
-    - Termination conditions:
-      * Found path to goal (hard stop or continue for optimization?)
-      * Max iterations reached
-      * Time budget exceeded
-      * User interruption
-Examples of what to implement:
-    - is_goal_reached(node_position, goal_position, threshold)
-    - track best node found so far
-    - termination condition checks in main loop
-
-TODO 9: PATH EXTRACTION & RECONSTRUCTION
---------
-Purpose: Convert tree structure into an actual path (sequence of states)
-Details:
-    - Given a goal node, backtrack to root following parent pointers
-    - Reverse the path (goes backward from goal → start)
-    - May want to smooth/simplify path as post-processing
-    - Return as list of states or list of (x, y) positions
-    - Track total path cost
-Examples of what to implement:
-    - extract_path(tree, goal_node)
-    - backtracking with parent pointers
-    - path smoothing [future enhancement]
-    - path cost accumulation
-
-TODO 10: MAIN RRT PLANNING LOOP
---------
-Purpose: Orchestrate all components to build tree and find path
-Details:
-    - Initialize tree with start configuration
-    - Main loop:
-        FOR each iteration (up to max_iter or until goal found):
-            1. Sample random config
-            2. Find nearest node
-            3. Steer toward sample
-            4. Collision check new edge
-            5. If free, add to tree
-            6. Check goal
-            7. [RRT*] Rewire neighbors
-    - Return best path found
-Examples of what to implement:
-    - plan(start, goal, max_iterations, max_time, step_size, etc.)
-    - iteration loop with progress tracking
-    - integration of all helper functions
-    - logging/visualization hooks
-
-TODO 11: TREE DATA STRUCTURE
---------
-Purpose: Efficient storage and traversal of all nodes in the RRT
-Details:
-    - Node object: stores position, parent, cost, children list (for RRT*)
-    - Tree object: root node, all nodes list, spatial index (KD-tree future)
-    - Support operations: add_node, find_neighbors, get_path
-    - Optional: visualization data
-Examples of what to implement:
-    - Node class with parent, cost, position attributes
-    - Tree class with add/search/query methods
-    - Optional spatial index for fast neighbor queries
-
-TODO 12: DYNAMICS MODULE INTEGRATION (PLUGGABLE)
---------
-Purpose: Allow dynamics team to plug in robot behavior without rewriting RRT
-Details:
-    - RobotDynamics interface/base class
-    - Methods dynamics module must provide:
-        * move_cost(state1, state2) -> float
-        * trajectory(state1, state2, step_size) -> State
-        * get_max_speed() -> float
-    - Placeholder implementation for now (linear interpolation, constant speed)
-    - Path planning passes dynamics_model to collision checking and steering
-Examples of what to implement:
-    - RobotDynamics base class with interface
-    - Placeholder implementations
-    - Integration points: steer(), collision_check(), edge_cost()
-
-TODO 13: MAIN RRT* PLANNING LOOP
---------------------------------
-Purpose: Build an optimized tree (not just feasible) using rewiring
-Details:
-    - Initialize tree with start configuration (cost = 0)
-    - Main loop:
-        FOR each iteration (up to max_iter or until goal found):
-            1. Sample random config
-               - With goal biasing (optional)
-            2. Find nearest node in tree
-            3. Steer toward sample (using Dubins / dynamics)
-            4. Collision check new edge
-               - Must be collision-free AND within bounds
-            5. Find neighbors within radius r
-               - r = γ * (log(n) / n)^(1/d)
-               - n = number of nodes
-               - d = dimension (2 for x,y)
-            6. Choose BEST PARENT (minimum cost)
-               FOR each neighbor:
-                   - Try connecting neighbor → new node
-                   - Check collision + bounds
-                   - Compute cost:
-                        cost = neighbor.cost + edge_cost(neighbor, new)
-                   - Pick lowest-cost valid parent
-            7. Add new node to tree
-               - Assign best parent
-               - Store cost
-            8. REWIRE neighbors (optimization step)
-               FOR each neighbor:
-                   - Try connecting new node → neighbor
-                   - Check collision + bounds
-                   - Compute new cost:
-                        cost = new_node.cost + edge_cost(new, neighbor)
-                   - If cheaper:
-                        update neighbor.parent
-                        update neighbor.cost
-                        update path
-            9. Check if goal reached
-               - Distance threshold
-            10. If goal reached:
-                - Store best goal node
-                - Continue for a few iterations (optional) to improve cost
-                - Or terminate early
-    - After loop:
-        - If goal found:
-            backtrack from goal → start using parent pointers
-            return path
-        - Else:
-            return None (no path found)
-            
-TODO 14: MAIN RRT*-FND PLANNING LOOP
---------------------------------
-Purpose:
-    Maintain and repair an RRT* path in the presence of dynamic obstacles
-    without rebuilding the entire tree from scratch
-Details:
-    - Phase 1: INITIAL PLANNING
-        - Run RRT* (or RRT*FN) to compute path from start → goal
-        - Store:
-            τ = full tree
-            σ = solution path (list of nodes)
-    - Phase 2: EXECUTION + MONITORING
-        - Set current node:
-            p_current = start
-        - While p_current is not goal:
-            1. Move along current path σ
-            2. Update dynamic obstacles
-                - Environment changes over time
-            3. Check if path ahead is still valid
-                - DetectCollision(σ, p_current) --> checks all future edges in the path for collisions with update obstacles
-            4. IF collision detected:
-                a. Stop movement
-                b. Split path (SelectBranch function):
-                    - Parent tree τ at p_current
-                    - Future branch (potentially invalid)
-                c. ValidPath function:
-                    - Removes nodes/edges that collide with obstacles
-                    - The removed portion becomes σ_separate
-                d. Try RECONNECT:
-                    - Find nearby nodes in main tree τ
-                    - Attempt direct connection:
-                        ObstacleFree(p_near, σ_separate)
-                    - If successful:
-                        τ ← reconnect trees
-                e. If reconnect fails:
-                    - REGROW:
-                        Grow tree τ from p_current
-                        Bias toward σ_separate region
-                f. Recompute solution path:
-                    σ ← SolutionPath(τ, p_current)
-                g. Resume movement
-            5. Move to next node:
-                p_current ← next node in σ
-    - End when goal reached
-================================================================================
-"""
-
 from typing import List, Tuple, Optional
 import math
 import time
@@ -308,6 +5,7 @@ import random
 import numpy as np
 from dynamics import State
 from utils import update_obstacles
+from config import GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MAX_RRT_TIME, STEP_SIZE, RRT_VIZ_INTERVAL
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -635,7 +333,7 @@ def propagate_cost(node: TreeNode):
 #  GOAL DETECTION & TERMINATION
 # ============================================================================
 
-def is_goal_reached(node_state: State, goal: State, threshold: float = 0.1) -> bool:
+def is_goal_reached(node_state: State, goal: State, threshold: float = GOAL_SUCCESS_THRESH) -> bool:
     """
     Check if node is within threshold distance of goal.
     
@@ -678,7 +376,7 @@ def extract_path(goal_node: TreeNode) -> List[State]:
 # MAIN RRT PLANNING LOOP
 # ============================================================================
 
-def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=5000, max_time=60.0, step_size=1.0, goal_threshold=0.1, p_goal_bias=0.05, viz_callback=None, viz_interval: int = 20):
+def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERATION, max_time=MAX_RRT_TIME, step_size=STEP_SIZE, goal_threshold=GOAL_SUCCESS_THRESH, p_goal_bias=GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL):
     """
     Main RRT planning function.
     
@@ -755,7 +453,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=5000, max_tim
 # ============================================================================
 # MAIN RRT* PLANNING LOOP
 # ============================================================================
-def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = 20000, max_time: float = 60.0, step_size: float = 1.0, goal_threshold: float = 0.1, p_goal_bias: float = 0.05, viz_callback=None, viz_interval: int = 20, tree = None):
+def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME, step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH, p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL, tree = None):
 
     start_time = time.time()
     iterations = 0
@@ -800,6 +498,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
             gamma = 15.0  # tuning parameter — theoretically gamma_star ≈ 25 for a 20x20 2D map
 
             radius = gamma * (math.log(n + 1) / (n + 1)) ** (1/d) # radius shrinks as tree grows (explore widely at the start, then refine locally later on)
+            radius = min(radius, step_size)
 
             neighbors = tree.get_neighbors_in_radius(q_new, radius)
 
@@ -871,7 +570,7 @@ def detect_future_collision(path: List[State], current_node: int, dynamics_model
         if traj is None:
             return True
 
-        # Each path step corresponds to one obstacle update (dt=0.1 in get_position_at_time)
+        # Each path step corresponds to one obstacle update
         t_start = t_current + (i - current_node) * 0.1
         if not is_collision_free_trajectory(traj, dynamics_model, t_start=t_start):
             return True
@@ -932,7 +631,7 @@ def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model):
         
         # Loop through nodes in the main tree to find nearby nodes to target
         for node in tree.nodes:
-            traj = steer(node.state, target, step_size = 1.0, dynamics_model = dynamics_model)
+            traj = steer(node.state, target, step_size = STEP_SIZE, dynamics_model = dynamics_model)
             
             if traj is None:
                 continue
@@ -961,10 +660,10 @@ def regrow(tree, current_state, goal, map_info, dynamics_model):
 # MAIN RRT*FND PLANNING LOOP
 # ============================================================================
 def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
-                      max_iterations: int = 20000, max_time: float = 60.0,
-                      step_size: float = 1.0, goal_threshold: float = 0.5,
-                      p_goal_bias: float = 0.05, viz_callback=None, 
-                      viz_interval: int = 20):
+                      max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME,
+                      step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH,
+                      p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None, 
+                      viz_interval: int = RRT_VIZ_INTERVAL):
     
     # Step 1: Initial Planning Phase (same as RRT*)
     # - run the existing RRT* planner to compute an initial path from start to goal
