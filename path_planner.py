@@ -246,7 +246,7 @@ def steer(start: State, target: State, step_size: float, dynamics_model):
     v, omega = dynamics_model.robot_controller(start, target)
 
     # STEP 2: simulate trajectory
-    trajectory = dynamics_model.trajectory(start, v, omega)
+    trajectory = dynamics_model.trajectory(start, v, omega,num_substeps=50)
 
     if len(trajectory) == 0:
         return None
@@ -812,7 +812,9 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                          max_time=max_time,
                          step_size=step_size,
                          goal_threshold=goal_threshold,
-                         p_goal_bias=p_goal_bias)
+                         p_goal_bias=p_goal_bias,
+                         viz_callback=viz_callback,
+                         viz_interval=viz_interval)
     
     if path is None:
         print("Initial planning failed, cannot execute RRT*FND")
