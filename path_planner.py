@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 from dynamics import State
 from utils import update_obstacles
-from config import GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MAX_RRT_TIME, STEP_SIZE, RRT_VIZ_INTERVAL, FND_EXEC_PAUSE
+from config import (GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MAX_RRT_TIME,
+                    STEP_SIZE, RRT_VIZ_INTERVAL, FND_EXEC_PAUSE,
+                    FND_REGROW_TIMEOUT, FND_REGROW_RETRIES, FND_RECONNECT_RADIUS)
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -749,12 +751,11 @@ def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model, t_curr
       - returns (final_node, junction_node) so the caller can reconstruct the
         full path without guessing
 
-    Using steer_full (no truncation) so the check actually reaches the target.
-    Previously used truncated steer + wrong slice (always sigma_separate[1:]),
-    which produced malformed paths when k > 0.
+    Uses KDTree (nearest node first, then radius neighbours) rather than
+    iterating all tree nodes, reducing per-target cost from O(n) to O(log n + k).
 
-    t_current: simulation time at the repair moment so obstacle positions are
-               evaluated at the correct time, not rewound to t=0.
+    t_current: simulation time at the first node of sigma_separate so obstacle
+               positions are evaluated at the correct future time.
 
     Returns:
         (final_node, junction_node) on success, (None, None) on failure.
@@ -764,18 +765,27 @@ def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model, t_curr
 
     for k, target in enumerate(sigma_separate):
         t_edge = t_current + k * 0.1
-        for node in tree.nodes:
-            traj = steer_full(node.state, target, dynamics_model)
 
+        # Build a de-duplicated candidate list: nearest node first (O(log n)),
+        # then all neighbours within FND_RECONNECT_RADIUS as fallback.
+        nearest = tree.get_nearest_node(target)
+        neighbours = tree.get_neighbors_in_radius(target, FND_RECONNECT_RADIUS)
+        seen: set = set()
+        candidates = []
+        for n in [nearest] + neighbours:
+            if n is not None and id(n) not in seen:
+                seen.add(id(n))
+                candidates.append(n)
+
+        for node in candidates:
+            traj = steer_full(node.state, target, dynamics_model)
             if traj is None:
                 continue
-
             if is_collision_free_trajectory(traj, dynamics_model, t_start=t_edge):
                 new_node = tree.add_node(
                     target, parent=node,
                     cost=node.cost + edge_cost(node.state, target, dynamics_model)
                 )
-                # Attach sigma_separate[k+1:] after new_node.
                 # attach_branch adds slice[1:] after start_node, so pass
                 # sigma_separate[k:] so that only sigma_separate[k+1:] is added.
                 final_node = attach_branch(tree, new_node, sigma_separate[k:], dynamics_model)
@@ -789,8 +799,10 @@ def regrow(current_state: State, goal: State, map_info, dynamics_model):
 
     A fresh tree is created rooted at current_state so the returned path is
     guaranteed to start there — no alignment gymnastics needed in the caller.
-    Previously reused the old (stale) tree and returned only the path, making
-    it impossible to update the tree reference or stitch the path reliably.
+
+    Uses MAX_RRT_ITERATION (same budget as the initial plan) and caps wall-clock
+    time at FND_REGROW_TIMEOUT so a hard environment never causes an infinite
+    freeze here.
 
     Returns:
         (path, tree) — path from current_state to goal (or None), and the
@@ -799,7 +811,10 @@ def regrow(current_state: State, goal: State, map_info, dynamics_model):
     fresh_tree = RRTTree(current_state)
     path, new_tree = plan_rrt_star(
         current_state, goal, map_info, dynamics_model,
-        max_iterations=1000, p_goal_bias=0.3, tree=fresh_tree
+        max_iterations=MAX_RRT_ITERATION,
+        max_time=FND_REGROW_TIMEOUT,
+        p_goal_bias=0.3,
+        tree=fresh_tree
     )
     return path, new_tree
 
@@ -807,16 +822,33 @@ def regrow(current_state: State, goal: State, map_info, dynamics_model):
 # ============================================================================
 # MAIN RRT*FND PLANNING LOOP
 # ============================================================================
+
+def _fnd_log(step: int, msg: str):
+    """Consistent FND debug prefix so all repair events are easy to grep."""
+    print(f"[FND step={step}] {msg}")
+
+
+def _try_regrow(p_current: State, goal: State, map_info, dynamics_model):
+    """
+    Attempt regrow up to FND_REGROW_RETRIES times.
+    Returns (new_path, new_tree) on first success, or (None, None) if all
+    attempts fail.
+    """
+    for attempt in range(1, FND_REGROW_RETRIES + 1):
+        new_path, new_tree = regrow(p_current, goal, map_info, dynamics_model)
+        if new_path is not None:
+            return new_path, new_tree
+        print(f"[FND] Regrow attempt {attempt}/{FND_REGROW_RETRIES} failed, retrying...")
+    return None, None
+
+
 def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                       max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME,
                       step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH,
-                      p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None, 
+                      p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None,
                       viz_interval: int = RRT_VIZ_INTERVAL):
-    
+
     # Step 1: Initial Planning Phase (same as RRT*)
-    # - run the existing RRT* planner to compute an initial path from start to goal
-    # - build the full tree (τ) and extract the solution path (σ)
-    # - this will be the baseline path before any dynamic obstacles are introduced
     path, tree = plan_rrt_star(start, goal, map_info, dynamics_model,
                          max_iterations=max_iterations,
                          max_time=max_time,
@@ -825,85 +857,93 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                          p_goal_bias=p_goal_bias,
                          viz_callback=viz_callback,
                          viz_interval=viz_interval)
-    
+
     if path is None:
         print("Initial planning failed, cannot execute RRT*FND")
         return None
-    
+
     # Step 2: Initialization
-    # - set the current node (p_current) to the start configuration
-    # - keep track of current path (σ) 
-    # - initialize any time or iteration tracking if needed for monitoring
     p_current = start
     current_index = 0
     repair_count = 0
     executed_path = [start]
-    
+
     # Step 3: Main Execution Loop
-    # - while p_current is not the goal
     while not is_goal_reached(p_current, goal, goal_threshold):
-    
+
         # Step 3.1: Move along the current path σ
-        # - move the robot forward along the path σ, updating p_current as it progresses
-        # - this simulates the robot executing the planned path in the environment
         if current_index < len(path) - 1:
             current_index += 1
             p_current = path[current_index]
             executed_path.append(p_current)
         else:
-            break
-        
-        # Step 3.2: Update dynamic obstacles
-        # - update positions of moving obstacles (should be provided by dynamics module or environment model)
-        # - environment now changes over time, so we need to keep track of where obstacles are at the current time step
+            # Path exhausted without reaching goal — regrow from here
+            _fnd_log(current_index, "path exhausted without reaching goal — regrowing")
+            sigma_main = list(executed_path)
+            new_path, new_tree = _try_regrow(p_current, goal, map_info, dynamics_model)
+            if new_path is None:
+                print("[FND] All regrow attempts failed after path exhaustion — aborting.")
+                return None
+            tree = new_tree
+            path = sigma_main + new_path[1:]
+            current_index = len(sigma_main) - 1
+            continue
+
+        # Step 3.2: Update dynamic obstacles (one update = 0.1 s of obstacle time)
         update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
-        
+
         # Step 3.3: Collision Detection
-        # t_current: each FND step calls update_obstacles once, dt=0.1 per step
+        # t_current is the absolute obstacle-simulation time at p_current.
+        # sigma_separate starts at the NEXT node, so its first edge is at
+        # t_current + 0.1 — used as t_separate_start below.
         t_current = current_index * 0.1
         if detect_future_collision(path, current_index, dynamics_model, t_current=t_current):
 
-            print("COLLISION DETECTED — repairing path")
             repair_count += 1
-            print(f"Repair triggered #{repair_count}")
+            _fnd_log(current_index, f"collision detected — repair #{repair_count}")
 
             # Step 3.3.2: SelectBranch — split path at current position
             sigma_main, sigma_separate = select_branch(path, current_index)
 
-            # Step 3.3.2b: Prune the separate branch from the tree BEFORE
-            # reconnect so it only searches nodes that are still valid.
-            # Use the original split point (before valid_path trims it).
+            # Prune the separate branch from the tree BEFORE reconnect so it
+            # only searches nodes that are still reachable from the robot.
             if current_index + 1 < len(path):
                 detach_branch(tree, path[current_index + 1])
 
-            # Step 3.3.3: ValidPath — trim colliding edges from sigma_separate
-            sigma_separate = valid_path(sigma_separate, dynamics_model, t_current=t_current)
+            # Step 3.3.3: ValidPath — trim colliding edges from sigma_separate.
+            # sigma_separate[0] is reached at the NEXT step → t_current + 0.1.
+            t_separate_start = t_current + 0.1
+            sigma_separate = valid_path(sigma_separate, dynamics_model, t_current=t_separate_start)
+            _fnd_log(current_index, f"valid_path kept {len(sigma_separate)} node(s) of sigma_separate")
 
             # Step 3.3.4: Try Reconnect
-            print("Trying reconnect...")
-            final_node, junction_node = reconnect(tree, sigma_separate, dynamics_model, t_current=t_current)
+            _fnd_log(current_index, "trying reconnect...")
+            final_node, junction_node = reconnect(tree, sigma_separate, dynamics_model, t_current=t_separate_start)
 
             reconnected_to_goal = False
             if final_node is not None:
-                # Build a geometrically correct full path:
-                #   root → … → junction_node → sigma_separate[k:] → goal
-                path_to_junction = extract_path(junction_node)   # [root, …, junction]
+                # Build full path: root → … → junction_node → reconnected tail
+                path_to_junction = extract_path(junction_node)
 
-                # Segment from junction's child to final_node (forward order)
+                # Walk from final_node up to junction_node (cycle-guarded above
+                # in reconnect's path reconstruction block).
                 segment_after_junction = []
                 n = final_node
+                max_walk = len(tree.nodes) + len(sigma_separate) + 10
+                walk_steps = 0
                 while n is not junction_node:
+                    if walk_steps > max_walk:
+                        raise RuntimeError(
+                            "reconnect: parent-chain walk did not reach junction_node "
+                            "— possible tree corruption"
+                        )
                     segment_after_junction.append(n.state)
                     n = n.parent
+                    walk_steps += 1
                 segment_after_junction.reverse()
 
                 full_path = path_to_junction + segment_after_junction
 
-                # valid_path may have trimmed sigma_separate short of the goal
-                # (e.g. the obstacle blocks early, so only the first few nodes
-                # survive). If the reconnected path doesn't reach the goal,
-                # treat it as a failure and regrow rather than following a dead
-                # stub that never arrives.
                 if is_goal_reached(full_path[-1], goal, goal_threshold):
                     # Locate p_current in the new path; fall back to closest node
                     best_i, best_d = 0, float('inf')
@@ -915,7 +955,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                     path = full_path
                     current_index = best_i
                     reconnected_to_goal = True
-                    print("Reconnected!")
+                    _fnd_log(current_index, f"reconnected! new path length={len(path)}")
 
                     if viz_callback is not None:
                         viz_callback({
@@ -925,20 +965,20 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                         })
                         plt.pause(0.05)
                 else:
-                    print("Reconnect partial — path doesn't reach goal, regrowing...")
+                    _fnd_log(current_index, "reconnect partial — doesn't reach goal, regrowing...")
 
             if not reconnected_to_goal:
-                # Step 3.3.5: Regrow — fresh RRT* from p_current
-                print("Reconnect failed -> Regrowing")
-                new_path, new_tree = regrow(p_current, goal, map_info, dynamics_model)
+                _fnd_log(current_index, "reconnect failed — regrowing")
+                new_path, new_tree = _try_regrow(p_current, goal, map_info, dynamics_model, sigma_main)
 
                 if new_path is None:
+                    print("[FND] All regrow attempts failed — aborting.")
                     return None
 
-                # new_path[0] == p_current == sigma_main[-1]; skip duplicate
                 tree = new_tree
                 path = sigma_main + new_path[1:]
                 current_index = len(sigma_main) - 1
+                _fnd_log(current_index, f"regrow succeeded — new path length={len(path)}")
 
                 if viz_callback is not None:
                     viz_callback({
@@ -948,7 +988,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                     })
                     plt.pause(0.05)
 
-            # Step 3.3.6: Resume movement with the updated path
+            # Step 3.3.5: Resume movement with the updated path
             continue
 
         # Step 3.4: Normal execution step — fire viz callback
@@ -959,11 +999,9 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                 "current_node": p_current, "iteration": current_index,
             })
             plt.pause(FND_EXEC_PAUSE)
-        
+
     # Step 4: End when goal reached
-    # - Once p_current is within the goal threshold, we can terminate and return the final path taken to reach the goal
-            
-    return executed_path # placeholder
+    return executed_path
 
 
 # ============================================================================

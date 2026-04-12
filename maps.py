@@ -204,7 +204,7 @@ def narrow_passage():
     dynamic_obstacles = []
 
     start = (18.5, 18.5, np.pi)
-    goals = [(2.5, 9.5,np.pi), (11.5, 15.5, 0.0)]
+    goals = [(2.5, 9.5,-np.pi), (11.5, 15.5, -np.pi)]
 
     return Map(grid, start, goals, "Narrow Passage", static_obstacles, dynamic_obstacles)
 
