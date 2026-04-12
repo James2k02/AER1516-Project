@@ -242,7 +242,7 @@ def multi_passage():
     dynamic_obstacles = []
 
     start = (2.5, 9.5, 0.0)
-    goals = [(18.5, 8.5)]
+    goals = [(18.5, 8.5,0.0)]
 
     return Map(grid, start, goals, "Multi Route Map", static_obstacles, dynamic_obstacles)
 

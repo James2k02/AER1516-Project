@@ -8,6 +8,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
+from matplotlib.collections import LineCollection
 from utils import update_obstacles
 from dynamics import State
 
@@ -107,14 +108,16 @@ def _set_axes(ax, grid):
 # ============================================================================
 
 def draw_rrt_tree(ax, tree, path=None):
-    """Draw RRT tree edges (cyan) and optional final path (yellow)."""
-    for node in tree.nodes:
-        if node.parent is not None:
-            ax.plot(
-                [node.state.x, node.parent.state.x],
-                [node.state.y, node.parent.state.y],
-                color='cyan', linewidth=0.5, alpha=0.4, zorder=4
-            )
+    """Draw RRT tree edges as a single LineCollection (cyan) and optional final path (yellow)."""
+    segments = [
+        [(node.parent.state.x, node.parent.state.y), (node.state.x, node.state.y)]
+        for node in tree.nodes
+        if node.parent is not None
+    ]
+    if segments:
+        lc = LineCollection(segments, colors='cyan', linewidths=0.5, alpha=0.4, zorder=4)
+        ax.add_collection(lc)
+
     if path is not None:
         xs = [s.x for s in path]
         ys = [s.y for s in path]
