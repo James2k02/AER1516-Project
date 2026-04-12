@@ -487,10 +487,24 @@ def extract_path(goal_node: TreeNode) -> List[State]:
     return path
 
 # ============================================================================
+# METRICS HELPER
+# ============================================================================
+
+def _path_length(path) -> float:
+    """Return total Euclidean distance along a list of States (x, y only)."""
+    if path is None or len(path) < 2:
+        return 0.0
+    return sum(
+        math.sqrt((path[i + 1].x - path[i].x) ** 2 + (path[i + 1].y - path[i].y) ** 2)
+        for i in range(len(path) - 1)
+    )
+
+
+# ============================================================================
 # MAIN RRT PLANNING LOOP
 # ============================================================================
 
-def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERATION, max_time=MAX_RRT_TIME, step_size=STEP_SIZE, goal_threshold=GOAL_SUCCESS_THRESH, p_goal_bias=GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL):
+def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERATION, max_time=MAX_RRT_TIME, step_size=STEP_SIZE, goal_threshold=GOAL_SUCCESS_THRESH, p_goal_bias=GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL, metrics_out: dict = None):
     """
     Main RRT planning function.
     
@@ -552,6 +566,11 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERA
                 path = extract_path(new_node)
                 planning_time = time.time() - start_time
                 print(f"Path found in {planning_time:.2f}s, {iterations} iterations, path length: {len(path)}")
+                if metrics_out is not None:
+                    metrics_out['planning_time_s'] = metrics_out.get('planning_time_s', 0.0) + planning_time
+                    metrics_out['iterations'] = metrics_out.get('iterations', 0) + iterations
+                    metrics_out['tree_nodes'] = metrics_out.get('tree_nodes', 0) + tree.size()
+                    metrics_out['path_length_m'] = metrics_out.get('path_length_m', 0.0) + _path_length(path)
                 return path, tree
 
         if viz_callback is not None and iterations % viz_interval == 0:
@@ -562,12 +581,16 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERA
     # No path found
     planning_time = time.time() - start_time
     print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
+    if metrics_out is not None:
+        metrics_out['planning_time_s'] = metrics_out.get('planning_time_s', 0.0) + planning_time
+        metrics_out['iterations'] = metrics_out.get('iterations', 0) + iterations
+        metrics_out['tree_nodes'] = metrics_out.get('tree_nodes', 0) + tree.size()
     return None, tree
 
 # ============================================================================
 # MAIN RRT* PLANNING LOOP
 # ============================================================================
-def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME, step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH, p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL, tree = None):
+def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME, step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH, p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL, tree = None, metrics_out: dict = None):
 
     start_time = time.time()
     iterations = 0
@@ -662,10 +685,20 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
         path = extract_path(goal_node)
         planning_time = time.time() - start_time
         print(f"[RRT*] Path found in {planning_time:.2f}s, {iterations} iterations, length: {len(path)}")
+        if metrics_out is not None:
+            metrics_out['planning_time_s'] = metrics_out.get('planning_time_s', 0.0) + planning_time
+            metrics_out['iterations'] = metrics_out.get('iterations', 0) + iterations
+            metrics_out['tree_nodes'] = metrics_out.get('tree_nodes', 0) + tree.size()
+            metrics_out['path_length_m'] = metrics_out.get('path_length_m', 0.0) + _path_length(path)
         return path, tree
 
     else:
+        planning_time = time.time() - start_time
         print("[RRT*] No path found")
+        if metrics_out is not None:
+            metrics_out['planning_time_s'] = metrics_out.get('planning_time_s', 0.0) + planning_time
+            metrics_out['iterations'] = metrics_out.get('iterations', 0) + iterations
+            metrics_out['tree_nodes'] = metrics_out.get('tree_nodes', 0) + tree.size()
         return None, tree
     
 
@@ -823,6 +856,19 @@ def regrow(current_state: State, goal: State, map_info, dynamics_model):
 # MAIN RRT*FND PLANNING LOOP
 # ============================================================================
 
+def _write_fnd_metrics(metrics_out, planning_metrics, fnd_total_start,
+                       tree, executed_path, repair_count, reconnect_count, regrow_count):
+    """Write all FND metrics into metrics_out dict (used at every return point)."""
+    metrics_out['planning_time_s'] = planning_metrics.get('planning_time_s', 0.0)
+    metrics_out['total_time_s'] = time.time() - fnd_total_start
+    metrics_out['iterations'] = planning_metrics.get('iterations', 0)
+    metrics_out['tree_nodes'] = tree.size() if tree is not None else 0
+    metrics_out['path_length_m'] = _path_length(executed_path)
+    metrics_out['fnd_repairs'] = repair_count
+    metrics_out['fnd_reconnects'] = reconnect_count
+    metrics_out['fnd_regrows'] = regrow_count
+
+
 def _fnd_log(step: int, msg: str):
     """Consistent FND debug prefix so all repair events are easy to grep."""
     print(f"[FND step={step}] {msg}")
@@ -846,7 +892,11 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                       max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME,
                       step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH,
                       p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None,
-                      viz_interval: int = RRT_VIZ_INTERVAL):
+                      viz_interval: int = RRT_VIZ_INTERVAL,
+                      metrics_out: dict = None, freeze_obstacles: bool = False):
+
+    fnd_total_start = time.time()
+    planning_metrics: dict = {}
 
     # Step 1: Initial Planning Phase (same as RRT*)
     path, tree = plan_rrt_star(start, goal, map_info, dynamics_model,
@@ -856,16 +906,28 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                          goal_threshold=goal_threshold,
                          p_goal_bias=p_goal_bias,
                          viz_callback=viz_callback,
-                         viz_interval=viz_interval)
+                         viz_interval=viz_interval,
+                         metrics_out=planning_metrics)
 
     if path is None:
         print("Initial planning failed, cannot execute RRT*FND")
+        if metrics_out is not None:
+            metrics_out['planning_time_s'] = planning_metrics.get('planning_time_s', 0.0)
+            metrics_out['total_time_s'] = time.time() - fnd_total_start
+            metrics_out['iterations'] = planning_metrics.get('iterations', 0)
+            metrics_out['tree_nodes'] = planning_metrics.get('tree_nodes', 0)
+            metrics_out['path_length_m'] = 0.0
+            metrics_out['fnd_repairs'] = 0
+            metrics_out['fnd_reconnects'] = 0
+            metrics_out['fnd_regrows'] = 0
         return None
 
     # Step 2: Initialization
     p_current = start
     current_index = 0
     repair_count = 0
+    reconnect_count = 0
+    regrow_count = 0
     executed_path = [start]
 
     # Step 3: Main Execution Loop
@@ -883,6 +945,9 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             new_path, new_tree = _try_regrow(p_current, goal, map_info, dynamics_model)
             if new_path is None:
                 print("[FND] All regrow attempts failed after path exhaustion — aborting.")
+                if metrics_out is not None:
+                    _write_fnd_metrics(metrics_out, planning_metrics, fnd_total_start,
+                                       tree, executed_path, repair_count, reconnect_count, regrow_count)
                 return None
             tree = new_tree
             path = sigma_main + new_path[1:]
@@ -890,7 +955,8 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             continue
 
         # Step 3.2: Update dynamic obstacles (one update = 0.1 s of obstacle time)
-        update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
+        if not freeze_obstacles:
+            update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
 
         # Step 3.3: Collision Detection
         # t_current is the absolute obstacle-simulation time at p_current.
@@ -955,6 +1021,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                     path = full_path
                     current_index = best_i
                     reconnected_to_goal = True
+                    reconnect_count += 1
                     _fnd_log(current_index, f"reconnected! new path length={len(path)}")
 
                     if viz_callback is not None:
@@ -973,11 +1040,15 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
 
                 if new_path is None:
                     print("[FND] All regrow attempts failed — aborting.")
+                    if metrics_out is not None:
+                        _write_fnd_metrics(metrics_out, planning_metrics, fnd_total_start,
+                                           tree, executed_path, repair_count, reconnect_count, regrow_count)
                     return None
 
                 tree = new_tree
                 path = sigma_main + new_path[1:]
                 current_index = len(sigma_main) - 1
+                regrow_count += 1
                 _fnd_log(current_index, f"regrow succeeded — new path length={len(path)}")
 
                 if viz_callback is not None:
@@ -1001,6 +1072,9 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             plt.pause(FND_EXEC_PAUSE)
 
     # Step 4: End when goal reached
+    if metrics_out is not None:
+        _write_fnd_metrics(metrics_out, planning_metrics, fnd_total_start,
+                           tree, executed_path, repair_count, reconnect_count, regrow_count)
     return executed_path
 
 
@@ -1015,6 +1089,8 @@ def plan_multi_goal(
     dynamics_model,
     planner: str = "rrt_star",
     segment_done_callback=None,
+    metrics_out: dict = None,
+    freeze_obstacles: bool = False,
     **kwargs
 ) -> Optional[List[State]]:
     """
@@ -1057,25 +1133,45 @@ def plan_multi_goal(
 
     full_path: List[State] = []
     current_start = start
+    goals_reached = 0
 
     for i, goal in enumerate(ordered_goals):
         print(f"[Multi-Goal] Segment {i + 1}/{len(ordered_goals)}: "
               f"({current_start.x:.1f},{current_start.y:.1f}) → ({goal.x:.1f},{goal.y:.1f})")
 
+        seg_metrics: dict = {} if metrics_out is not None else None
+
         if planner == "rrt":
-            segment, tree = plan_rrt(current_start, goal, map_info, dynamics_model, **kwargs)
+            segment, tree = plan_rrt(current_start, goal, map_info, dynamics_model,
+                                     metrics_out=seg_metrics, **kwargs)
         elif planner == "rrt_star":
-            segment, tree = plan_rrt_star(current_start, goal, map_info, dynamics_model, **kwargs)
+            segment, tree = plan_rrt_star(current_start, goal, map_info, dynamics_model,
+                                          metrics_out=seg_metrics, **kwargs)
         elif planner == "rrt_fnd":
-            segment = plan_rrt_star_fnd(current_start, goal, map_info, dynamics_model, **kwargs)
+            segment = plan_rrt_star_fnd(current_start, goal, map_info, dynamics_model,
+                                        metrics_out=seg_metrics,
+                                        freeze_obstacles=freeze_obstacles, **kwargs)
             tree = None  # rrt_fnd handles its own execution visualization
         else:
             raise ValueError(f"[Multi-Goal] Unknown planner '{planner}'. "
                              "Choose from: 'rrt', 'rrt_star', 'rrt_fnd'.")
 
+        # Accumulate per-segment metrics
+        if metrics_out is not None and seg_metrics:
+            for key in ('planning_time_s', 'total_time_s', 'iterations',
+                        'tree_nodes', 'path_length_m',
+                        'fnd_repairs', 'fnd_reconnects', 'fnd_regrows'):
+                if key in seg_metrics:
+                    metrics_out[key] = metrics_out.get(key, 0.0 if '.' in key or key == 'path_length_m' else 0) + seg_metrics[key]
+
         if segment is None:
             print(f"[Multi-Goal] Failed to find path to goal {i + 1} — aborting.")
+            if metrics_out is not None:
+                metrics_out['goals_reached'] = goals_reached
+                metrics_out['goals_total'] = len(ordered_goals)
             return None
+
+        goals_reached += 1
 
         # Fire the segment-done callback for rrt/rrt_star so the caller can
         # animate execution of this segment before planning the next one.
@@ -1088,6 +1184,10 @@ def plan_multi_goal(
             full_path = list(segment)
 
         current_start = goal
+
+    if metrics_out is not None:
+        metrics_out['goals_reached'] = goals_reached
+        metrics_out['goals_total'] = len(ordered_goals)
 
     print(f"[Multi-Goal] Done — {len(full_path)} total waypoints across "
           f"{len(ordered_goals)} segment(s).")
