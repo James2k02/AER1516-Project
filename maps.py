@@ -266,8 +266,8 @@ def simple_dynamic():
         DynamicObstacle(14, 14, 2, vel=(-0.5, 0))
     ]
 
-    start = (18.5, 10.5, (-np.pi/2))
-    goals = [(1.5, 10.5), (5.5, 3.5), (9.5, 16.5), (13.5, 3.5)]
+    start = (18.5, 12.5, (-np.pi/2))
+    goals = [(1.5, 12.5), (9.5, 5.5)] # (5.5, 16.5)
 
     return Map(grid, start, goals, "Simple Dynamic Map", static_obstacles, dynamic_obstacles)
 
