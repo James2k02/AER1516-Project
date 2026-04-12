@@ -17,15 +17,21 @@ from visualization import plot_final_path, render_planning_step, animate_path_ex
 from config import RRT_VIZ_INTERVAL, GOAL_SUCCESS_THRESH
 
 
-def _setup(map_name):
+def _setup(map_name, override_start = None):
     """Load map and wire up the dynamics model. Returns (map, dynamics_model, start, goals)."""
     m = get_map(map_name)
     dynamics_model = RobotDynamics()
     dynamics_model.grid = m.grid
     dynamics_model.static_obstacles = m.static_obstacles
     dynamics_model.dynamic_obstacles = m.dynamic_obstacles
-    start = State(m.start[1], m.start[0], 0)
+
+    if override_start is None:
+        start = State(m.start[1], m.start[0], 0)
+    else:
+        start = override_start
+
     goals = [State(g[1], g[0], 0) for g in m.goals]
+
     return m, dynamics_model, start, goals
 
 
@@ -67,6 +73,70 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
     plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT Final Path")
     plt.pause(0.1)
     _execute(path, dynamics_model, m, start, goals)
+
+def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
+
+    map_sequence = ["map1", "map2", "map3", "map4", "map5"]
+
+    current_start = None  # will update after each map
+
+    for i, map_name in enumerate(map_sequence):
+
+        print(f"\n==============================")
+        print(f"Running {map_name}")
+        print(f"==============================")
+
+        # Setup with carried-over start
+        m, dynamics_model, start, goals = _setup(map_name, override_start=current_start)
+
+        print(f"Start: {start}")
+        print(f"Goals: {goals}")
+
+        # Visualization
+        plt.ion()
+        fig, ax = plt.subplots()
+
+        def on_viz(payload):
+            render_planning_step(ax, payload, m, dynamics_model, start, goals)
+            plt.pause(0.01)
+
+        # Run planner
+        path = plan_multi_goal(
+            start=start,
+            goals=goals,
+            map_info=m,
+            dynamics_model=dynamics_model,
+            planner=planner,
+            step_size=step_size,
+            max_iterations=max_iterations,
+            goal_threshold=goal_threshold,
+            viz_callback=on_viz,
+            viz_interval=RRT_VIZ_INTERVAL,
+        )
+
+        plt.ioff()
+
+        if path is None:
+            print(f"Failed on {map_name}")
+            return
+
+        print(f"Completed {map_name} — {len(path)} waypoints")
+
+        # Plot final path
+        plot_final_path(ax, path, m, dynamics_model, start, goals,
+                        title=f"{map_name} Final Path")
+        plt.pause(0.5)
+
+        # Execute
+        _execute(path, dynamics_model, m, start, goals)
+
+        # 🔥 CRITICAL PART: carry forward last state
+        last_state = path[-1]
+
+        # Reset theta if you want (optional but cleaner)
+        current_start = State(last_state.x, last_state.y, last_state.theta)
+
+    print("\nAll maps completed!")
 
 
 # ---------------------------------------------------------
@@ -144,12 +214,21 @@ if __name__ == "__main__":
     parser.add_argument("--iters",     type=int,   default=3000, help="Max iterations")
     parser.add_argument("--step",      type=float, default=0.5,  help="Step size")
     parser.add_argument("--threshold", type=float, default=GOAL_SUCCESS_THRESH,  help="Goal threshold")
+    parser.add_argument("--all_maps",  type=bool,  default=True, help="Run all maps?")
     args = parser.parse_args()
 
     kwargs = dict(max_iterations=args.iters, step_size=args.step, goal_threshold=args.threshold)
-    if args.planner == "rrt":
-        RRT_tester(args.map, **kwargs)
-    elif args.planner == "rrt_star":
-        RRT_star_tester(args.map, **kwargs)
-    elif args.planner == "rrt_fnd":
-        RRT_fnd_tester(args.map, **kwargs)
+    if args.all_maps:
+        run_all_maps(
+            planner=args.planner,
+            max_iterations=args.iters,
+            step_size=args.step,
+            goal_threshold=args.threshold
+        )
+    else:
+        if args.planner == "rrt":
+            RRT_tester(args.map, **kwargs)
+        elif args.planner == "rrt_star":
+            RRT_star_tester(args.map, **kwargs)
+        elif args.planner == "rrt_fnd":
+            RRT_fnd_tester(args.map, **kwargs)
