@@ -4,6 +4,7 @@ import time
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.spatial import KDTree
 from dynamics import State
 from utils import update_obstacles
 from config import GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MAX_RRT_TIME, STEP_SIZE, RRT_VIZ_INTERVAL
@@ -44,65 +45,66 @@ class RRTTree:
         """
         self.root = TreeNode(start, parent=None, cost=0.0)
         self.nodes = [self.root]
-    
+        self._kdtree: KDTree | None = None
+        self._kdtree_dirty: bool = True
+
+    def _rebuild_kdtree(self):
+        """Rebuild the KD-tree from current nodes (lazy — only when dirty)."""
+        if self._kdtree_dirty:
+            positions = np.array([[n.state.x, n.state.y] for n in self.nodes])
+            self._kdtree = KDTree(positions)
+            self._kdtree_dirty = False
+
     def add_node(self, state: State, parent: TreeNode, cost: float) -> TreeNode:
         """
         Add a new node to the tree.
-        
+
         Args:
             state: New node configuration
             parent: Parent node
             cost: Cost from start to this new node
-        
+
         Returns:
             The newly created node
         """
         new_node = TreeNode(state, parent=parent, cost=cost)
         parent.children.append(new_node)
         self.nodes.append(new_node)
+        self._kdtree_dirty = True
         return new_node
-    
+
     def size(self) -> int:
         """Return number of nodes in tree."""
         return len(self.nodes)
-    
+
     def get_nearest_node(self, state: State) -> TreeNode:
         """
-        Find nearest node to given state.
-        
+        Find nearest node to given state using KD-tree (O(log n)).
+
         Args:
             state: Query state
-        
+
         Returns:
             Nearest node in tree
         """
-        nearest = self.root
-        min_dist = State.state_distance(state, nearest.state)
-        
-        for node in self.nodes[1:]:
-            dist = State.state_distance(state, node.state)
-            if dist < min_dist:
-                min_dist = dist
-                nearest = node
-        
-        return nearest
-    
+        self._rebuild_kdtree()
+        _, idx = self._kdtree.query([state.x, state.y])
+        return self.nodes[idx]
+
     def get_neighbors_in_radius(self, state: State, radius: float) -> List[TreeNode]:
         """
-        Find all nodes within radius of given state.
-        
+        Find all nodes within radius of given state using KD-tree (O(log n + k)).
+
         Args:
             state: Query state
             radius: Search radius
-        
+
         Returns:
             List of nodes within radius
         """
-        neighbors = []
-        for node in self.nodes:
-            if State.state_distance(state, node.state) <= radius:
-                neighbors.append(node)
-        return neighbors
+        self._rebuild_kdtree()
+        idxs = self._kdtree.query_ball_point([state.x, state.y], radius)
+        return [self.nodes[i] for i in idxs]
 
 
 # ============================================================================
@@ -433,9 +435,10 @@ def detach_branch(tree: RRTTree, detach_state: State):
         to_remove.append(n)
         stack.extend(n.children)
 
-    # Remove from the flat node list
+    # Remove from the flat node list and invalidate the spatial index
     remove_ids = {id(n) for n in to_remove}
     tree.nodes = [n for n in tree.nodes if id(n) not in remove_ids]
+    tree._kdtree_dirty = True
 
 
 # ============================================================================

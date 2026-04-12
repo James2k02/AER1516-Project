@@ -140,10 +140,33 @@ def render_planning_step(ax, payload, map_info, dynamics_model, start, goals):
         tree                       : RRTTree — draws all edges if present
         current_path (list[State]) : highlighted best path found so far
         current_node (State)       : robot's current position (execution phase)
+
+    Performance notes:
+        - The static grid background (free-space tiles) is drawn once and cached on the axes
+          object via ax._rrt_bg_drawn. It is never redrawn unless the axes is cleared externally.
+        - All per-frame artists (obstacles, tree, path, robot, start/goal markers) are tagged
+          with _is_transient=True and removed at the start of the next frame instead of calling
+          ax.clear(), which avoids recreating the 400+ background Rectangle patches each frame.
     """
-    ax.clear()
+    # Remove transient artists from the previous frame (tree, path, obstacles, robot, markers)
+    for artist in list(ax.get_children()):
+        if getattr(artist, '_is_transient', False):
+            artist.remove()
+
+    # Draw the static grid background (free-space tiles) only once per axes lifetime.
+    # ax.set_xlim/ylim inside _set_axes disables autoscaling, so limits persist across frames.
+    if not getattr(ax, '_rrt_bg_drawn', False):
+        ax.clear()
+        draw_grid_background(ax, map_info.grid)
+        _set_axes(ax, map_info.grid)
+        ax.figure.patch.set_facecolor('#222222')
+        ax._rrt_bg_drawn = True
+
+    # Snapshot existing artist ids so newly added ones can be tagged transient below
+    existing_ids = {id(a) for a in ax.get_children()}
+
+    # --- per-frame content (all tagged transient at the end) ---
     update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
-    draw_grid_background(ax, map_info.grid)
     draw_obstacles(ax, dynamics_model)
 
     tree = payload.get("tree")
@@ -161,8 +184,11 @@ def render_planning_step(ax, payload, map_info, dynamics_model, start, goals):
         ax.scatter(current_node.x, current_node.y, c='cyan', s=80, zorder=5, label='Robot', edgecolors='white', linewidths=0.5)
 
     draw_start_and_goals(ax, start, goals)
-    _set_axes(ax, map_info.grid)
-    ax.figure.patch.set_facecolor('#222222')
+
+    # Tag every artist added this frame so it gets removed at the start of the next frame
+    for artist in ax.get_children():
+        if id(artist) not in existing_ids:
+            artist._is_transient = True
 
     planner   = payload.get("planner", "Planner")
     phase     = payload.get("phase", "planning")

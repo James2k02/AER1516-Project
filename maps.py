@@ -256,13 +256,13 @@ def simple_dynamic():
     static_obstacles = create_boundary_obstacles(20, 20) + []
 
     dynamic_obstacles = [
-        DynamicObstacle(2, 2, 2, vel=(0.5, 0)), # (x, y, theta, velocity)
+        DynamicObstacle(2, 2, 2, vel=(0.25, 0)), # (x, y, theta, velocity)
         #DynamicObstacle(10, 2, 2, vel=(-0.5, 0)),
-        DynamicObstacle(10, 6, 2, vel=(-0.5, 0)),
+        DynamicObstacle(10, 6, 2, vel=(-0.25, 0)),
         #DynamicObstacle(14, 6, 2, vel=(-0.5, 0)),
-        DynamicObstacle(2, 10, 2, vel=(0.5, 0)),
+        DynamicObstacle(2, 10, 2, vel=(0.25, 0)),
         #DynamicObstacle(10, 10, 2, vel=(-0.5, 0)),
-        DynamicObstacle(10, 14, 2, vel=(-0.5, 0)),
+        DynamicObstacle(10, 14, 2, vel=(-0.25, 0)),
         #DynamicObstacle(14, 14, 2, vel=(-0.5, 0))
     ]
 
