@@ -21,7 +21,7 @@ PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 os.makedirs(PLOTS_DIR, exist_ok=True)
 
 
-def _setup(map_name, override_start = None):
+def _setup(map_name):
     """Load map and wire up the dynamics model. Returns (map, dynamics_model, start, goals)."""
     m = get_map(map_name)
     dynamics_model = RobotDynamics()
@@ -29,11 +29,7 @@ def _setup(map_name, override_start = None):
     dynamics_model.static_obstacles = m.static_obstacles
     dynamics_model.dynamic_obstacles = m.dynamic_obstacles
 
-    if override_start is None:
-        start = State(m.start[1], m.start[0], 0)
-    else:
-        start = override_start
-
+    start = State(m.start[1], m.start[0], m.start[2])
     goals = [State(g[1], g[0], 0) for g in m.goals]
 
     return m, dynamics_model, start, goals
@@ -164,8 +160,6 @@ def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_th
 
     map_sequence = ["map1", "map2", "map3", "map4", "map5"]
 
-    current_start = None  # will update after each map
-
     for map_name in map_sequence:
 
         print(f"\n==============================")
@@ -173,7 +167,7 @@ def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_th
         print(f"==============================")
 
         # Setup with carried-over start
-        m, dynamics_model, start, goals = _setup(map_name, override_start=current_start)
+        m, dynamics_model, start, goals = _setup(map_name)
 
         print(f"Start: {start}")
         print(f"Goals: {goals}")
@@ -218,10 +212,6 @@ def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_th
         plt.savefig(os.path.join(PLOTS_DIR, f"{planner}_{map_name}.png"), bbox_inches='tight')
         plt.pause(0.5)
 
-        # carry forward last state to next map
-        last_state = path[-1]
-        current_start = State(last_state.x, last_state.y, last_state.theta)
-
     print("\nAll maps completed!")
 
 
@@ -235,7 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("--iters",     type=int,   default=3000, help="Max iterations")
     parser.add_argument("--step",      type=float, default=0.5,  help="Step size")
     parser.add_argument("--threshold", type=float, default=GOAL_SUCCESS_THRESH,  help="Goal threshold")
-    parser.add_argument("--all_maps",  type=bool,  default=True, help="Run all maps?")
+    parser.add_argument("--all_maps", action="store_true", help="Run all maps")
     args = parser.parse_args()
 
     kwargs = dict(max_iterations=args.iters, step_size=args.step, goal_threshold=args.threshold)
