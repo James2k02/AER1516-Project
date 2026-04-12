@@ -261,7 +261,7 @@ def simple_dynamic():
     ]
 
     start = (18.5, 8.5)
-    goals = [(2.5, 8.5),(10.5, 3.5),(18.5, 3.5), (3.5, 10.5)]
+    goals = [(2.5, 8.5),(10.5, 3.5),(18.5, 3.5)]
 
     return Map(grid, start, goals, "Simple Dynamic Map", static_obstacles, dynamic_obstacles)
 

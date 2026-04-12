@@ -192,37 +192,6 @@ def plot_final_path(ax, path, map_info, dynamics_model, start, goals, title="Fin
 # ANIMATION
 # ============================================================================
 
-def animate_execution(full_traj, dynamics_model, map_info, start, goals):
-    """Animate robot following a simulated trajectory with moving obstacles."""
-    grid = map_info.grid
-
-    plt.ion()
-    fig, ax = plt.subplots()
-    fig.patch.set_facecolor('#222222')
-
-    for i, (x, y, theta) in enumerate(full_traj):
-
-        ax.clear()
-
-        # Update and draw dynamic obstacles
-        for obs in dynamics_model.dynamic_obstacles:
-            obs.update(grid)
-            if obs.collides_with_point(x, y, dynamics_model.robot_radius):
-                print(f"COLLISION at step {i}")
-
-        draw_grid_background(ax, grid)
-        draw_obstacles(ax, dynamics_model)
-        draw_robot(ax, x, y, theta, dynamics_model.robot_radius)
-        draw_start_and_goals(ax, start, goals)
-
-        _set_axes(ax, grid)
-        ax.set_title(f"Execution (step {i})", color='white')
-
-        plt.pause(0.01)
-
-    plt.ioff()
-    plt.show()
-
 def animate_path_execution(path, dynamics_model, map_info, start, goals):
 
     if path is None or len(path) < 2:

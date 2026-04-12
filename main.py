@@ -9,12 +9,16 @@ Usage:
 '''
 
 import argparse
+import os
 import matplotlib.pyplot as plt
 from maps import get_map
 from dynamics import RobotDynamics, State
 from path_planner import plan_multi_goal
-from visualization import plot_final_path, render_planning_step, animate_path_execution
+from visualization import plot_final_path, render_planning_step
 from config import RRT_VIZ_INTERVAL, GOAL_SUCCESS_THRESH
+
+PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
+os.makedirs(PLOTS_DIR, exist_ok=True)
 
 
 def _setup(map_name, override_start = None):
@@ -35,11 +39,26 @@ def _setup(map_name, override_start = None):
     return m, dynamics_model, start, goals
 
 
-def _execute(path, dynamics_model, m, start, goals):
-    """Simulate and animate the robot following the planned path."""
-    for obs in dynamics_model.dynamic_obstacles:
-        obs.reset_dynamic_obstacle()
-    animate_path_execution(path, dynamics_model, m, start, goals)
+# def _execute(path, dynamics_model, m, start, goals):
+#     """Simulate and animate the robot following the planned path."""
+#     for obs in dynamics_model.dynamic_obstacles:
+#         obs.reset_dynamic_obstacle()
+#     animate_path_execution(path, dynamics_model, m, start, goals)
+
+
+def _make_segment_done_callback(ax, planner_label, m, dynamics_model, start, goals):
+    """Return a segment_done_callback that animates execution of a completed segment."""
+    def on_segment_done(segment, tree):
+        plt.ion()
+        for i, node in enumerate(segment):
+            render_planning_step(ax, {
+                "planner": planner_label, "phase": "executing",
+                "tree": tree, "current_path": segment,
+                "current_node": node, "iteration": i,
+            }, m, dynamics_model, start, goals)
+            plt.pause(0.05)
+        plt.ioff()
+    return on_segment_done
 
 
 # ---------------------------------------------------------
@@ -49,7 +68,6 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
     m, dynamics_model, start, goals = _setup(map_name)
     print(f"[RRT] map={map_name}  start={start}  goals={goals}")
 
-    # Live tree visualization during planning
     plt.ion()
     _, ax = plt.subplots()
 
@@ -62,6 +80,7 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
         planner="rrt",
         step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold,
         viz_callback=on_viz, viz_interval=RRT_VIZ_INTERVAL,
+        segment_done_callback=_make_segment_done_callback(ax, "RRT", m, dynamics_model, start, goals),
     )
     plt.ioff()
 
@@ -71,72 +90,8 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
 
     print(f"Path found — {len(path)} waypoints")
     plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT Final Path")
-    plt.pause(0.1)
-    _execute(path, dynamics_model, m, start, goals)
-
-def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
-
-    map_sequence = ["map1", "map2", "map3", "map4", "map5"]
-
-    current_start = None  # will update after each map
-
-    for i, map_name in enumerate(map_sequence):
-
-        print(f"\n==============================")
-        print(f"Running {map_name}")
-        print(f"==============================")
-
-        # Setup with carried-over start
-        m, dynamics_model, start, goals = _setup(map_name, override_start=current_start)
-
-        print(f"Start: {start}")
-        print(f"Goals: {goals}")
-
-        # Visualization
-        plt.ion()
-        fig, ax = plt.subplots()
-
-        def on_viz(payload):
-            render_planning_step(ax, payload, m, dynamics_model, start, goals)
-            plt.pause(0.01)
-
-        # Run planner
-        path = plan_multi_goal(
-            start=start,
-            goals=goals,
-            map_info=m,
-            dynamics_model=dynamics_model,
-            planner=planner,
-            step_size=step_size,
-            max_iterations=max_iterations,
-            goal_threshold=goal_threshold,
-            viz_callback=on_viz,
-            viz_interval=RRT_VIZ_INTERVAL,
-        )
-
-        plt.ioff()
-
-        if path is None:
-            print(f"Failed on {map_name}")
-            return
-
-        print(f"Completed {map_name} — {len(path)} waypoints")
-
-        # Plot final path
-        plot_final_path(ax, path, m, dynamics_model, start, goals,
-                        title=f"{map_name} Final Path")
-        plt.pause(0.5)
-
-        # Execute
-        _execute(path, dynamics_model, m, start, goals)
-
-        # 🔥 CRITICAL PART: carry forward last state
-        last_state = path[-1]
-
-        # Reset theta if you want (optional but cleaner)
-        current_start = State(last_state.x, last_state.y, last_state.theta)
-
-    print("\nAll maps completed!")
+    plt.savefig(os.path.join(PLOTS_DIR, f"rrt_{map_name}.png"), bbox_inches='tight')
+    plt.show()
 
 
 # ---------------------------------------------------------
@@ -146,7 +101,6 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
     m, dynamics_model, start, goals = _setup(map_name)
     print(f"[RRT*] map={map_name}  start={start}  goals={goals}")
 
-    # Live tree visualization during planning
     plt.ion()
     _, ax = plt.subplots()
 
@@ -159,6 +113,7 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
         planner="rrt_star",
         step_size=step_size, max_iterations=max_iterations, goal_threshold=goal_threshold,
         viz_callback=on_viz, viz_interval=RRT_VIZ_INTERVAL,
+        segment_done_callback=_make_segment_done_callback(ax, "RRT*", m, dynamics_model, start, goals),
     )
     plt.ioff()
 
@@ -168,12 +123,12 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
 
     print(f"Path found — {len(path)} waypoints")
     plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT* Final Path")
-    plt.pause(0.1)
-    _execute(path, dynamics_model, m, start, goals)
+    plt.savefig(os.path.join(PLOTS_DIR, f"rrt_star_{map_name}.png"), bbox_inches='tight')
+    plt.show()
 
 
 # ---------------------------------------------------------
-# RRT*-FND tester — scaffold ready, waiting on plan_rrt_star_fnd implementation
+# RRT*-FND tester
 # ---------------------------------------------------------
 def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goals = _setup(map_name)
@@ -181,6 +136,7 @@ def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=
 
     plt.ion()
     _, ax = plt.subplots()
+
     def on_viz(payload):
         render_planning_step(ax, payload, m, dynamics_model, start, goals)
         plt.pause(0.01)
@@ -200,8 +156,73 @@ def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=
 
     print(f"Path found — {len(path)} waypoints")
     plot_final_path(ax, path, m, dynamics_model, start, goals, title="RRT*-FND Final Path")
+    plt.savefig(os.path.join(PLOTS_DIR, f"rrt_fnd_{map_name}.png"), bbox_inches='tight')
     plt.pause(0.1)
-    _execute(path, dynamics_model, m, start, goals)
+
+
+def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
+
+    map_sequence = ["map1", "map2", "map3", "map4", "map5"]
+
+    current_start = None  # will update after each map
+
+    for map_name in map_sequence:
+
+        print(f"\n==============================")
+        print(f"Running {map_name}")
+        print(f"==============================")
+
+        # Setup with carried-over start
+        m, dynamics_model, start, goals = _setup(map_name, override_start=current_start)
+
+        print(f"Start: {start}")
+        print(f"Goals: {goals}")
+
+        plt.ion()
+        _, ax = plt.subplots()
+
+        def on_viz(payload):
+            render_planning_step(ax, payload, m, dynamics_model, start, goals)
+            plt.pause(0.01)
+
+        # segment_done_callback only applies to rrt/rrt_star; rrt_fnd handles execution live
+        seg_cb = None
+        if planner in ("rrt", "rrt_star"):
+            label = "RRT" if planner == "rrt" else "RRT*"
+            seg_cb = _make_segment_done_callback(ax, label, m, dynamics_model, start, goals)
+
+        path = plan_multi_goal(
+            start=start,
+            goals=goals,
+            map_info=m,
+            dynamics_model=dynamics_model,
+            planner=planner,
+            step_size=step_size,
+            max_iterations=max_iterations,
+            goal_threshold=goal_threshold,
+            viz_callback=on_viz,
+            viz_interval=RRT_VIZ_INTERVAL,
+            segment_done_callback=seg_cb,
+        )
+
+        plt.ioff()
+
+        if path is None:
+            print(f"Failed on {map_name}")
+            return
+
+        print(f"Completed {map_name} — {len(path)} waypoints")
+
+        plot_final_path(ax, path, m, dynamics_model, start, goals,
+                        title=f"{map_name} Final Path")
+        plt.savefig(os.path.join(PLOTS_DIR, f"{planner}_{map_name}.png"), bbox_inches='tight')
+        plt.pause(0.5)
+
+        # carry forward last state to next map
+        last_state = path[-1]
+        current_start = State(last_state.x, last_state.y, last_state.theta)
+
+    print("\nAll maps completed!")
 
 
 # ---------------------------------------------------------
