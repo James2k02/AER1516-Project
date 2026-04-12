@@ -16,7 +16,7 @@ GOAL_SAMPLE_RATE = 0.1  # 10%
 GOAL_SUCCESS_THRESH = 0.25 # Meters
 STEP_SIZE = 3.0 # Meters
 
-MAX_RRT_ITERATION = 20000 # samples
+MAX_RRT_ITERATION = 3000 # samples
 MAX_RRT_TIME = 60.0 # seconds
 
 ## VISUALS
