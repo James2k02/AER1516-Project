@@ -30,7 +30,7 @@ def _setup(map_name):
     dynamics_model.dynamic_obstacles = m.dynamic_obstacles
 
     start = State(m.start[1], m.start[0], m.start[2])
-    goals = [State(g[1], g[0], 0) for g in m.goals]
+    goals = [State(g[1], g[0], g[2]) for g in m.goals]
 
     return m, dynamics_model, start, goals
 

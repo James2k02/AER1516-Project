@@ -174,8 +174,8 @@ def simple():
 
     dynamic_obstacles = []
 
-    start = (2.5, 2.5, 0.0) # (x, y, theta)
-    goals = [(18.5, 18.5), (16.5, 5.5)]  # list of goals, can add more later
+    start = (2.5, 2.5, np.pi/4) # (x, y, theta)
+    goals = [(18.5, 18.5,0.0), (16.5, 5.5,0.0)]  # list of goals, can add more later
 
     return Map(grid, start, goals, "Simple Map", static_obstacles, dynamic_obstacles)
 
@@ -204,7 +204,7 @@ def narrow_passage():
     dynamic_obstacles = []
 
     start = (18.5, 18.5, np.pi)
-    goals = [(2.5, 9.5), (11.5, 15.5)]
+    goals = [(2.5, 9.5,np.pi), (11.5, 15.5, 0.0)]
 
     return Map(grid, start, goals, "Narrow Passage", static_obstacles, dynamic_obstacles)
 
@@ -257,17 +257,17 @@ def simple_dynamic():
 
     dynamic_obstacles = [
         DynamicObstacle(2, 2, 2, vel=(0.5, 0)), # (x, y, theta, velocity)
-        DynamicObstacle(10, 2, 2, vel=(-0.5, 0)),
-        DynamicObstacle(6, 6, 2, vel=(0.5, 0)),
-        DynamicObstacle(14, 6, 2, vel=(-0.5, 0)),
+        #DynamicObstacle(10, 2, 2, vel=(-0.5, 0)),
+        DynamicObstacle(10, 6, 2, vel=(-0.5, 0)),
+        #DynamicObstacle(14, 6, 2, vel=(-0.5, 0)),
         DynamicObstacle(2, 10, 2, vel=(0.5, 0)),
-        DynamicObstacle(10, 10, 2, vel=(-0.5, 0)),
-        DynamicObstacle(6, 14, 2, vel=(0.5, 0)),
-        DynamicObstacle(14, 14, 2, vel=(-0.5, 0))
+        #DynamicObstacle(10, 10, 2, vel=(-0.5, 0)),
+        DynamicObstacle(10, 14, 2, vel=(-0.5, 0)),
+        #DynamicObstacle(14, 14, 2, vel=(-0.5, 0))
     ]
 
     start = (18.5, 12.5, (-np.pi/2))
-    goals = [(1.5, 12.5), (9.5, 5.5)] # (5.5, 16.5)
+    goals = [(1.5, 12.5,-np.pi/4), (9.5, 5.5,0.0)] # (5.5, 16.5)
 
     return Map(grid, start, goals, "Simple Dynamic Map", static_obstacles, dynamic_obstacles)
 
@@ -300,8 +300,8 @@ def hard_dynamic():
         # DynamicObstacle(12, 12, 2, vel=(0, 0.1)),
     ]
 
-    start = (2.5, 8.5, 0.0)
-    goals = [(18.5, 18.5)]
+    start = (2.5, 8.5, np.pi/4)
+    goals = [(18.5, 18.5,0.0)]
 
     return Map(grid, start, goals, "Hard Dynamic Map", static_obstacles, dynamic_obstacles)
 
