@@ -547,7 +547,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERA
                 path = extract_path(new_node)
                 planning_time = time.time() - start_time
                 print(f"Path found in {planning_time:.2f}s, {iterations} iterations, path length: {len(path)}")
-                return path
+                return path, tree
 
         if viz_callback is not None and iterations % viz_interval == 0:
             viz_callback({"planner": "RRT", "tree": tree, "iteration": iterations, "phase": "planning"})
@@ -557,7 +557,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERA
     # No path found
     planning_time = time.time() - start_time
     print(f"No path found after {planning_time:.2f}s, {iterations} iterations")
-    return None
+    return None, tree
 
 # ============================================================================
 # MAIN RRT* PLANNING LOOP
@@ -956,6 +956,7 @@ def plan_multi_goal(
     map_info,
     dynamics_model,
     planner: str = "rrt_star",
+    segment_done_callback=None,
     **kwargs
 ) -> Optional[List[State]]:
     """
@@ -965,13 +966,17 @@ def plan_multi_goal(
     paths are concatenated (shared junction waypoints are not duplicated).
 
     Args:
-        start:          Starting state.
-        goals:          List of goal states to visit (order will be determined here).
-        map_info:       Map info passed through to the planner.
-        dynamics_model: Robot dynamics passed through to the planner.
-        planner:        Which planner to use — "rrt", "rrt_star", or "rrt_fnd".
-        **kwargs:       Extra keyword arguments forwarded to the underlying planner
-                        (e.g. max_iterations, step_size, viz_callback, …).
+        start:                  Starting state.
+        goals:                  List of goal states to visit (order will be determined here).
+        map_info:               Map info passed through to the planner.
+        dynamics_model:         Robot dynamics passed through to the planner.
+        planner:                Which planner to use — "rrt", "rrt_star", or "rrt_fnd".
+        segment_done_callback:  Optional callable(segment, tree) fired after each rrt/rrt_star
+                                segment is found. Use this to animate the robot executing the
+                                segment before planning begins for the next goal.
+                                Ignored for rrt_fnd (execution is built into that planner).
+        **kwargs:               Extra keyword arguments forwarded to the underlying planner
+                                (e.g. max_iterations, step_size, viz_callback, …).
 
     Returns:
         Concatenated path through all goals as a list of States, or None if any
@@ -1000,11 +1005,12 @@ def plan_multi_goal(
               f"({current_start.x:.1f},{current_start.y:.1f}) → ({goal.x:.1f},{goal.y:.1f})")
 
         if planner == "rrt":
-            segment = plan_rrt(current_start, goal, map_info, dynamics_model, **kwargs)
+            segment, tree = plan_rrt(current_start, goal, map_info, dynamics_model, **kwargs)
         elif planner == "rrt_star":
-            segment, _ = plan_rrt_star(current_start, goal, map_info, dynamics_model, **kwargs)
+            segment, tree = plan_rrt_star(current_start, goal, map_info, dynamics_model, **kwargs)
         elif planner == "rrt_fnd":
             segment = plan_rrt_star_fnd(current_start, goal, map_info, dynamics_model, **kwargs)
+            tree = None  # rrt_fnd handles its own execution visualization
         else:
             raise ValueError(f"[Multi-Goal] Unknown planner '{planner}'. "
                              "Choose from: 'rrt', 'rrt_star', 'rrt_fnd'.")
@@ -1012,6 +1018,11 @@ def plan_multi_goal(
         if segment is None:
             print(f"[Multi-Goal] Failed to find path to goal {i + 1} — aborting.")
             return None
+
+        # Fire the segment-done callback for rrt/rrt_star so the caller can
+        # animate execution of this segment before planning the next one.
+        if segment_done_callback is not None and tree is not None:
+            segment_done_callback(segment, tree)
 
         if full_path:
             full_path += segment[1:]  # skip the shared junction waypoint
