@@ -21,3 +21,4 @@ MAX_RRT_TIME = 60.0 # seconds
 
 ## VISUALS
 RRT_VIZ_INTERVAL = 20 # iterations
+FND_EXEC_PAUSE  = 0.3  # seconds per execution step (increase to slow down, 0.01 for fast)

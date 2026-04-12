@@ -9,7 +9,6 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.collections import LineCollection
-from utils import update_obstacles
 from dynamics import State
 
 
@@ -166,7 +165,10 @@ def render_planning_step(ax, payload, map_info, dynamics_model, start, goals):
     existing_ids = {id(a) for a in ax.get_children()}
 
     # --- per-frame content (all tagged transient at the end) ---
-    update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
+    # NOTE: do NOT call update_obstacles here. Obstacle advancement is the
+    # simulation's responsibility (FND loop, animate_path_execution, etc.).
+    # Calling it here double-steps obstacle positions on every rendered frame,
+    # causing the visual to show obstacles ahead of where collision detection ran.
     draw_obstacles(ax, dynamics_model)
 
     tree = payload.get("tree")

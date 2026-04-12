@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 from dynamics import State
 from utils import update_obstacles
-from config import GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MAX_RRT_TIME, STEP_SIZE, RRT_VIZ_INTERVAL
+from config import GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MAX_RRT_TIME, STEP_SIZE, RRT_VIZ_INTERVAL, FND_EXEC_PAUSE
 
 # TODO: Import dynamics definitions from your dynamics module
 
@@ -611,7 +611,7 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
             # Step 5: Find neighbors within radius defined by formula r = gamma * (log(n) / n)^(1/d)
             n = tree.size()
             d = 2
-            gamma = 15.0  # tuning parameter — theoretically gamma_star ≈ 25 for a 20x20 2D map
+            gamma = 30.0  # tuning parameter — theoretically gamma_star ≈ 25 for a 20x20 2D map
 
             radius = gamma * (math.log(n + 1) / (n + 1)) ** (1/d) # radius shrinks as tree grows (explore widely at the start, then refine locally later on)
             radius = min(radius, step_size)
@@ -704,21 +704,24 @@ def select_branch(path: List[State], current_index: int):
     
     return sigma_main, sigma_separate
 
-def valid_path(sigma_separate: List[State], dynamics_model):
+def valid_path(sigma_separate: List[State], dynamics_model, t_current: float = 0.0):
     """
-    Removes any invalid nodes/edges from the path that collide with obstacles, returning the cleaned path
+    Removes any invalid nodes/edges from the path that collide with obstacles, returning the cleaned path.
+    t_current: simulation time at the first node of sigma_separate so that each
+               edge is checked at the correct future obstacle position.
     """
     valid = [sigma_separate[0]]
     for i in range(len(sigma_separate) - 1):
         traj = steer_full(sigma_separate[i], sigma_separate[i+1], dynamics_model)
-        
+
         if traj is None:
             break
-        
-        if not is_collision_free_trajectory(traj, dynamics_model):
+
+        t_edge = t_current + i * 0.1
+        if not is_collision_free_trajectory(traj, dynamics_model, t_start=t_edge):
             break
-    
-        valid.append(sigma_separate[i+1]) 
+
+        valid.append(sigma_separate[i+1])
     return valid
 
 def attach_branch(tree: RRTTree, start_node: List[State], sigma_separate: List[State], dynamics_model):
@@ -734,7 +737,7 @@ def attach_branch(tree: RRTTree, start_node: List[State], sigma_separate: List[S
         prev = new_node
     return prev # return the last node added (which should be the goal node if sigma_separate is valid all the way to the end)
 
-def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model):
+def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model, t_current: float = 0.0):
     """
     Try to reconnect the separate branch back to the main tree.
 
@@ -750,6 +753,9 @@ def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model):
     Previously used truncated steer + wrong slice (always sigma_separate[1:]),
     which produced malformed paths when k > 0.
 
+    t_current: simulation time at the repair moment so obstacle positions are
+               evaluated at the correct time, not rewound to t=0.
+
     Returns:
         (final_node, junction_node) on success, (None, None) on failure.
     """
@@ -757,13 +763,14 @@ def reconnect(tree: RRTTree, sigma_separate: List[State], dynamics_model):
         return None, None
 
     for k, target in enumerate(sigma_separate):
+        t_edge = t_current + k * 0.1
         for node in tree.nodes:
             traj = steer_full(node.state, target, dynamics_model)
 
             if traj is None:
                 continue
 
-            if is_collision_free_trajectory(traj, dynamics_model):
+            if is_collision_free_trajectory(traj, dynamics_model, t_start=t_edge):
                 new_node = tree.add_node(
                     target, parent=node,
                     cost=node.cost + edge_cost(node.state, target, dynamics_model)
@@ -870,12 +877,13 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                 detach_branch(tree, path[current_index + 1])
 
             # Step 3.3.3: ValidPath — trim colliding edges from sigma_separate
-            sigma_separate = valid_path(sigma_separate, dynamics_model)
+            sigma_separate = valid_path(sigma_separate, dynamics_model, t_current=t_current)
 
             # Step 3.3.4: Try Reconnect
             print("Trying reconnect...")
-            final_node, junction_node = reconnect(tree, sigma_separate, dynamics_model)
+            final_node, junction_node = reconnect(tree, sigma_separate, dynamics_model, t_current=t_current)
 
+            reconnected_to_goal = False
             if final_node is not None:
                 # Build a geometrically correct full path:
                 #   root → … → junction_node → sigma_separate[k:] → goal
@@ -891,26 +899,35 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
 
                 full_path = path_to_junction + segment_after_junction
 
-                # Locate p_current in the new path; fall back to closest node
-                best_i, best_d = 0, float('inf')
-                for i, s in enumerate(full_path):
-                    d = State.state_distance(s, p_current)
-                    if d < best_d:
-                        best_d, best_i = d, i
+                # valid_path may have trimmed sigma_separate short of the goal
+                # (e.g. the obstacle blocks early, so only the first few nodes
+                # survive). If the reconnected path doesn't reach the goal,
+                # treat it as a failure and regrow rather than following a dead
+                # stub that never arrives.
+                if is_goal_reached(full_path[-1], goal, goal_threshold):
+                    # Locate p_current in the new path; fall back to closest node
+                    best_i, best_d = 0, float('inf')
+                    for i, s in enumerate(full_path):
+                        d = State.state_distance(s, p_current)
+                        if d < best_d:
+                            best_d, best_i = d, i
 
-                path = full_path
-                current_index = best_i
-                print("Reconnected!")
+                    path = full_path
+                    current_index = best_i
+                    reconnected_to_goal = True
+                    print("Reconnected!")
 
-                if viz_callback is not None:
-                    viz_callback({
-                        "planner": "RRT*-FND", "phase": "repairing",
-                        "tree": tree, "current_path": path,
-                        "current_node": p_current, "iteration": current_index,
-                    })
-                    plt.pause(0.05)
+                    if viz_callback is not None:
+                        viz_callback({
+                            "planner": "RRT*-FND", "phase": "repairing",
+                            "tree": tree, "current_path": path,
+                            "current_node": p_current, "iteration": current_index,
+                        })
+                        plt.pause(0.05)
+                else:
+                    print("Reconnect partial — path doesn't reach goal, regrowing...")
 
-            else:
+            if not reconnected_to_goal:
                 # Step 3.3.5: Regrow — fresh RRT* from p_current
                 print("Reconnect failed -> Regrowing")
                 new_path, new_tree = regrow(p_current, goal, map_info, dynamics_model)
@@ -941,7 +958,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                 "tree": tree, "current_path": path,
                 "current_node": p_current, "iteration": current_index,
             })
-            plt.pause(0.01)
+            plt.pause(FND_EXEC_PAUSE)
         
     # Step 4: End when goal reached
     # - Once p_current is within the goal threshold, we can terminate and return the final path taken to reach the goal
