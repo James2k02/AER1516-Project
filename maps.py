@@ -174,7 +174,7 @@ def simple():
 
     dynamic_obstacles = []
 
-    start = (2.5, 2.5)
+    start = (2.5, 2.5, 0.0) # (x, y, theta)
     goals = [(18.5, 18.5), (16.5, 5.5)]  # list of goals, can add more later
 
     return Map(grid, start, goals, "Simple Map", static_obstacles, dynamic_obstacles)
@@ -203,10 +203,10 @@ def narrow_passage():
 
     dynamic_obstacles = []
 
-    start = (18.5, 18.5)
-    goals = [(2.5, 9.5)]
+    start = (18.5, 18.5, np.pi)
+    goals = [(2.5, 9.5), (11.5, 15.5)]
 
-    return Map(grid, start, goals, "Narrow Passage Map w/ Jump", static_obstacles, dynamic_obstacles)
+    return Map(grid, start, goals, "Narrow Passage", static_obstacles, dynamic_obstacles)
 
 # =========================
 # Map 3: Static Map (multi-passage)
@@ -241,7 +241,7 @@ def multi_passage():
 
     dynamic_obstacles = []
 
-    start = (2.5, 9.5)
+    start = (2.5, 9.5, 0.0)
     goals = [(18.5, 8.5)]
 
     return Map(grid, start, goals, "Multi Route Map", static_obstacles, dynamic_obstacles)
@@ -256,12 +256,18 @@ def simple_dynamic():
     static_obstacles = create_boundary_obstacles(20, 20) + []
 
     dynamic_obstacles = [
-        DynamicObstacle(2, 3, 2, vel=(0.2, 0)),
-        DynamicObstacle(12, 10, 2, vel=(-0.2, 0))
+        DynamicObstacle(2, 2, 2, vel=(0.5, 0)), # (x, y, theta, velocity)
+        DynamicObstacle(10, 2, 2, vel=(-0.5, 0)),
+        DynamicObstacle(6, 6, 2, vel=(0.5, 0)),
+        DynamicObstacle(14, 6, 2, vel=(-0.5, 0)),
+        DynamicObstacle(2, 10, 2, vel=(0.5, 0)),
+        DynamicObstacle(10, 10, 2, vel=(-0.5, 0)),
+        DynamicObstacle(6, 14, 2, vel=(0.5, 0)),
+        DynamicObstacle(14, 14, 2, vel=(-0.5, 0))
     ]
 
-    start = (18.5, 8.5)
-    goals = [(2.5, 8.5),(10.5, 3.5),(18.5, 3.5)]
+    start = (18.5, 10.5, (-np.pi/2))
+    goals = [(1.5, 10.5), (5.5, 3.5), (9.5, 16.5), (13.5, 3.5)]
 
     return Map(grid, start, goals, "Simple Dynamic Map", static_obstacles, dynamic_obstacles)
 
@@ -294,7 +300,7 @@ def hard_dynamic():
         # DynamicObstacle(12, 12, 2, vel=(0, 0.1)),
     ]
 
-    start = (2.5, 8.5)
+    start = (2.5, 8.5, 0.0)
     goals = [(18.5, 18.5)]
 
     return Map(grid, start, goals, "Hard Dynamic Map", static_obstacles, dynamic_obstacles)
