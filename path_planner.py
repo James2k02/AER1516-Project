@@ -952,6 +952,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             tree = new_tree
             path = sigma_main + new_path[1:]
             current_index = len(sigma_main) - 1
+            regrow_count += 1
             continue
 
         # Step 3.2: Update dynamic obstacles (one update = 0.1 s of obstacle time)
@@ -1036,7 +1037,7 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
 
             if not reconnected_to_goal:
                 _fnd_log(current_index, "reconnect failed — regrowing")
-                new_path, new_tree = _try_regrow(p_current, goal, map_info, dynamics_model, sigma_main)
+                new_path, new_tree = _try_regrow(p_current, goal, map_info, dynamics_model)
 
                 if new_path is None:
                     print("[FND] All regrow attempts failed — aborting.")

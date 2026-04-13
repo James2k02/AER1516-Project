@@ -41,7 +41,7 @@ TRIAL_MATRIX = {
 
 N_RUNS = 6
 # One fixed seed per trial — different so variance is real, fixed so results are reproducible.
-TRIAL_SEEDS = [42, 123, 456, 789, 1011, 1314]
+TRIAL_SEEDS = [42, 110, 456, 789, 1011, 1314]
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), 'results')
 
 CSV_COLUMNS = [
@@ -130,11 +130,20 @@ def run_trial(algorithm: str, map_name: str, freeze_obstacles: bool, trial_idx: 
 # Summary table
 # ---------------------------------------------------------------------------
 def _mean_std(values):
-    if not values:
+    # Filter out non-numeric entries (e.g. '' from error rows)
+    numeric = []
+    for v in values:
+        try:
+            f = float(v)
+            if not math.isnan(f):
+                numeric.append(f)
+        except (TypeError, ValueError):
+            pass
+    if not numeric:
         return float('nan'), float('nan')
-    n = len(values)
-    mu = sum(values) / n
-    var = sum((v - mu) ** 2 for v in values) / n
+    n = len(numeric)
+    mu = sum(numeric) / n
+    var = sum((v - mu) ** 2 for v in numeric) / n
     return mu, math.sqrt(var)
 
 
