@@ -321,3 +321,41 @@ def get_map(name):
     if name not in MAPS:
         raise ValueError(f"Map '{name}' not found")
     return MAPS[name]()
+
+
+# =========================
+# Save map images
+# =========================
+def save_map_images(output_dir="maps_img"):
+    import os
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from visualization import draw_grid_background, draw_obstacles, draw_start_and_goals, _set_axes
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    for key, map_fn in MAPS.items():
+        m = map_fn()
+
+        start_state = State(m.start[1], m.start[0], m.start[2])
+        goal_states = [State(g[1], g[0], g[2]) for g in m.goals]
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        fig.patch.set_facecolor('#222222')
+        ax.set_facecolor('#111111')
+
+        draw_grid_background(ax, m.grid)
+        draw_obstacles(ax, m)
+        draw_start_and_goals(ax, start_state, goal_states)
+        _set_axes(ax, m.grid)
+        ax.set_title(m.name, color='white')
+
+        out_path = os.path.join(output_dir, f"{key}.png")
+        fig.savefig(out_path, bbox_inches='tight', dpi=150)
+        plt.close(fig)
+        print(f"Saved {out_path}")
+
+
+if __name__ == "__main__":
+    save_map_images()

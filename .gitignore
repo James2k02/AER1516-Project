@@ -125,3 +125,4 @@ dmypy.json
 *.pyc
 plots/
 results/
+.DS_Store
