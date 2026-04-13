@@ -32,7 +32,7 @@ from path_planner import plan_multi_goal
 # Dynamic maps: RRT* (frozen obstacles = baseline) and RRT*-FND (live obstacles)
 # ---------------------------------------------------------------------------
 TRIAL_MATRIX = {
-    'rrt':      [('map1', False), ('map2', False), ('map3', False)],
+    'rrt':      [('map1', False), ('map2', False), ('map3', False), ('map4', True),  ('map5', True)],
     'rrt_star': [('map1', False), ('map2', False), ('map3', False),
                  ('map4', True),  ('map5', True)],   # True = freeze_obstacles
     'rrt_fnd':  [('map1', False), ('map2', False), ('map3', False),
@@ -41,7 +41,7 @@ TRIAL_MATRIX = {
 
 N_RUNS = 6
 # One fixed seed per trial — different so variance is real, fixed so results are reproducible.
-TRIAL_SEEDS = [42, 110, 456, 789, 1011, 1314]
+TRIAL_SEEDS = [1, 21, 42, 67, 110, 343, 456, 789, 1011, 1314]
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), 'results')
 
 CSV_COLUMNS = [
