@@ -35,13 +35,6 @@ def _setup(map_name):
     return m, dynamics_model, start, goals
 
 
-# def _execute(path, dynamics_model, m, start, goals):
-#     """Simulate and animate the robot following the planned path."""
-#     for obs in dynamics_model.dynamic_obstacles:
-#         obs.reset_dynamic_obstacle()
-#     animate_path_execution(path, dynamics_model, m, start, goals)
-
-
 def _make_segment_done_callback(ax, planner_label, m, dynamics_model, start, goals):
     """Return a segment_done_callback that animates execution of a completed segment."""
     def on_segment_done(segment, tree):
@@ -60,9 +53,6 @@ def _make_segment_done_callback(ax, planner_label, m, dynamics_model, start, goa
     return on_segment_done
 
 
-# ---------------------------------------------------------
-# RRT tester
-# ---------------------------------------------------------
 def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goals = _setup(map_name)
     print(f"[RRT] map={map_name}  start={start}  goals={goals}")
@@ -93,9 +83,6 @@ def RRT_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL
     plt.show()
 
 
-# ---------------------------------------------------------
-# RRT* tester
-# ---------------------------------------------------------
 def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goals = _setup(map_name)
     print(f"[RRT*] map={map_name}  start={start}  goals={goals}")
@@ -126,9 +113,6 @@ def RRT_star_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold
     plt.show()
 
 
-# ---------------------------------------------------------
-# RRT*-FND tester
-# ---------------------------------------------------------
 def RRT_fnd_tester(map_name, max_iterations=3000, step_size=0.5, goal_threshold=GOAL_SUCCESS_THRESH):
     m, dynamics_model, start, goals = _setup(map_name)
     print(f"[RRT*-FND] map={map_name}  start={start}  goals={goals}")
@@ -169,7 +153,6 @@ def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_th
         print(f"Running {map_name}")
         print(f"==============================")
 
-        # Setup with carried-over start
         m, dynamics_model, start, goals = _setup(map_name)
 
         print(f"Start: {start}")
@@ -218,9 +201,6 @@ def run_all_maps(planner="rrt_star", max_iterations=3000, step_size=0.5, goal_th
     print("\nAll maps completed!")
 
 
-# ---------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AER1516 Path Planner")
     parser.add_argument("--planner",   choices=["rrt", "rrt_star", "rrt_fnd"], default="rrt_star")

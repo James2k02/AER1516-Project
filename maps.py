@@ -1,21 +1,13 @@
-'''
-AER1516 - Project
-File that contains the map definitions for the project. Each map is represented as a grid with obstacles, a start point, and a goal point. 
-The maps can be easily modified or extended by changing the grid layout and obstacle placements
-'''
-
 from matplotlib.pyplot import grid
 import numpy as np
 from dynamics import RobotDynamics
 from dynamics import State
 
-# =========================
-# Map class
-# =========================
+
 class Map:
-    def __init__(self, grid, start, goals, name, static_obstacles=None, dynamic_obstacles=None): # goals is a list of (x, y) tuples
+    def __init__(self, grid, start, goals, name, static_obstacles=None, dynamic_obstacles=None):
         self.grid = grid
-        self.dimensions = grid.shape # outputs (rows, cols) --> (height, width)
+        self.dimensions = grid.shape  # (rows, cols) = (height, width)
         self.start = start
         self.goals = goals
         self.name = name
@@ -25,9 +17,7 @@ class Map:
 
 
 class Obstacle:
-    """
-    Base obstacle class (geometry only).
-    """
+    """Base obstacle class (geometry only)."""
 
     def __init__(self, x, y, w, h):
         self.x = x  # column
@@ -35,9 +25,6 @@ class Obstacle:
         self.w = w
         self.h = h
 
-    # =========================
-    # Geometry
-    # =========================
     def get_rect(self):
         return (self.x, self.y, self.w, self.h)
 
@@ -54,35 +41,24 @@ class Obstacle:
         return f"Obstacle(x={self.x}, y={self.y}, w={self.w}, h={self.h})"
     
 class StaticObstacle(Obstacle):
-    """
-    Static rectangular obstacle.
-    """
+    """Static rectangular obstacle."""
 
     def __init__(self, x, y, w, h):
         super().__init__(x, y, w, h)
 
 class DynamicObstacle(Obstacle):
-    """
-    Dynamic obstacle (square only) with velocity.
-    """
+    """Dynamic obstacle (square only) with velocity."""
 
     def __init__(self, x, y, size, vel=(0, 0)):
         super().__init__(x, y, size, size)
 
         self.size = size
         self.vel = list(vel)
-
-        # store initial position for prediction
         self.initial_pos = (x, y)
         self.initial_vel = list(vel)
 
-    # =========================
-    # Motion
-    # =========================
     def update(self, grid):
-        """
-        Move obstacle with bounce logic.
-        """
+        """Move obstacle with bounce logic."""
         vx, vy = self.vel
 
         new_x = self.x + vx
@@ -92,12 +68,10 @@ class DynamicObstacle(Obstacle):
             self.x = new_x
             self.y = new_y
         else:
-            # bounce
             self.vel[0] *= -1
             self.vel[1] *= -1
 
     def _valid_position(self, grid, x, y):
-        # Check full extent of obstacle against grid bounds
         if x < 0 or y < 0 or x + self.w > grid.shape[1] or y + self.h > grid.shape[0]:
             return False
 
@@ -142,9 +116,6 @@ class DynamicObstacle(Obstacle):
     def __repr__(self):
         return f"DynamicObstacle(x={self.x}, y={self.y}, size={self.size}, vel={self.vel})"
 
-# =========================
-# Helper: add walls
-# =========================
 def create_boundary_obstacles(rows, cols):
     return [
         StaticObstacle(0, 0, cols, 1),
@@ -153,9 +124,6 @@ def create_boundary_obstacles(rows, cols):
         StaticObstacle(cols - 1, 0, 1, rows),
     ]
 
-'''
-Note: the map is 20x20 but the interior is 18x18 becasue of the boundaries. A lot of Activate maps also have boundaries so you're not too close to the walls
-'''
 
 # =========================
 # Map 1: Static Map (simple)
@@ -163,7 +131,6 @@ Note: the map is 20x20 but the interior is 18x18 becasue of the boundaries. A lo
 def simple():
     grid = np.zeros((20, 20))
 
-    # simple obstacles - (x, y, w, h)
     static_obstacles = create_boundary_obstacles(20, 20) + [
         StaticObstacle(5, 6, 3, 4),
         StaticObstacle(2, 12, 2, 3),
@@ -185,7 +152,6 @@ def simple():
 def narrow_passage():
     grid = np.zeros((20, 20))
 
-    # simple obstacles - (x, y, w, h)
     static_obstacles = create_boundary_obstacles(20, 20) + [
         # wall 1 
         StaticObstacle(0, 4, 14, 2),
@@ -214,7 +180,6 @@ def narrow_passage():
 def multi_passage():
     grid = np.zeros((20, 20))
 
-    # simple obstacles - (x, y, w, h)
     static_obstacles = create_boundary_obstacles(20, 20) + [
         # y = 4
         StaticObstacle(0, 4, 2, 1),
@@ -252,7 +217,6 @@ def multi_passage():
 def simple_dynamic():
     grid = np.zeros((20, 20))
 
-    # simple obstacles - (x, y, w, h)
     static_obstacles = create_boundary_obstacles(20, 20) + []
 
     dynamic_obstacles = [
@@ -277,7 +241,6 @@ def simple_dynamic():
 def hard_dynamic():
     grid = np.zeros((20, 20))
 
-    # simple obstacles - (x, y, w, h)
     static_obstacles = create_boundary_obstacles(20, 20) + [
         # central wall (split for gaps)
         StaticObstacle(9, 4, 2, 3),

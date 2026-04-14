@@ -16,8 +16,6 @@ class State(NamedTuple):
     y: float
     theta: float
 
-    # UTILITY METHODS
-    
     def position(self) -> Tuple[float, float]:
         """Return (x, y) position tuple."""
         return (self.x, self.y)
@@ -62,14 +60,11 @@ class RobotDynamics:
     
     def move_cost(self, state1: State, state2: State) -> float:
         """Cost (time) to move between two states."""
-        # TODO: Implement (placeholder: just Euclidean distance / speed)
         pass
-    
+
     def can_hop_over(self, obstacle, state1: State, state2: State) -> bool:
         """Can robot hop over this obstacle when moving from state1 to state2?"""
         pass
-
-    # def hop_over(Self, state1: State, state2: State) ->
 
     def robot_controller(self, nearest_state: State, target_state: State):
         """
@@ -80,23 +75,18 @@ class RobotDynamics:
         dx = target_state.x - nearest_state.x
         dy = target_state.y - nearest_state.y
 
-        # Distance and heading
         lin_dist = math.sqrt(dx*dx + dy*dy)
         desired_theta = math.atan2(dy, dx)
 
-        # Heading error
         dtheta = desired_theta - nearest_state.theta
         dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
 
-        # Gains (tune these!)
         v_gain = 1.0
         omega_gain = 2.5
 
-        # Control
         v = v_gain * lin_dist
         omega = omega_gain * dtheta
 
-        # Clip
         v = np.clip(v, -self.max_vel, self.max_vel)
         omega = np.clip(omega, -self.max_angular_vel, self.max_angular_vel)
 
@@ -159,26 +149,17 @@ class RobotDynamics:
 
         current_state = path[0]
 
-        # Loop through each waypoint
         for target_state in path[1:]:
-
-            # Move toward current waypoint
             while current_state.distance_to(target_state) > goal_tolerance:
-
-                # 1. Compute control input
                 v, omega = self.robot_controller(current_state, target_state)
-
-                # 2. Simulate forward motion
                 traj_segment = self.trajectory(current_state, v, omega)
 
                 if traj_segment is None or len(traj_segment) == 0:
                     break
 
-                # 3. Append trajectory segment
                 for x, y, theta in traj_segment:
                     full_traj.append([x, y, theta])
 
-                # 4. Update current state (VERY IMPORTANT)
                 x, y, theta = traj_segment[-1]
                 current_state = State(x, y, theta)
 
@@ -186,7 +167,6 @@ class RobotDynamics:
     
     def get_hop_speed(self) -> float:
         """Return speed when hopping over obstacles."""
-        # TODO: Implement
         pass
 
 class jumping_turtle_dynamics(RobotDynamics):

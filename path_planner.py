@@ -11,13 +11,6 @@ from config import (GOAL_SAMPLE_RATE, GOAL_SUCCESS_THRESH, MAX_RRT_ITERATION, MA
                     STEP_SIZE, RRT_VIZ_INTERVAL, FND_EXEC_PAUSE,
                     FND_REGROW_TIMEOUT, FND_REGROW_RETRIES, FND_RECONNECT_RADIUS)
 
-# TODO: Import dynamics definitions from your dynamics module
-
-
-# ============================================================================
-# TODO 11: TREE DATA STRUCTURE
-# ============================================================================
-
 class TreeNode:
     """Represents a single node in the RRT tree."""
     
@@ -30,7 +23,7 @@ class TreeNode:
         """
         self.state = state
         self.parent = parent
-        self.cost = cost  # Total cost from start to here
+        self.cost = cost
         self.children = []
     
     def __repr__(self):
@@ -51,7 +44,7 @@ class RRTTree:
         self._kdtree_dirty: bool = True
 
     def _rebuild_kdtree(self):
-        """Rebuild the KD-tree from current nodes (lazy — only when dirty)."""
+        """Rebuild the KD-tree lazily when dirty."""
         if self._kdtree_dirty:
             positions = np.array([[n.state.x, n.state.y] for n in self.nodes])
             self._kdtree = KDTree(positions)
@@ -109,10 +102,6 @@ class RRTTree:
         return [self.nodes[i] for i in idxs]
 
 
-# ============================================================================
-# TODO 2: RANDOM SAMPLING
-# ============================================================================
-
 def sample_random_state(map_bounds: Tuple, goal: State = None,
                          p_goal: float = 0.05) -> State:
     """
@@ -130,7 +119,6 @@ def sample_random_state(map_bounds: Tuple, goal: State = None,
     if goal is not None and random.random() < p_goal:
         return goal
 
-    # Random uniform in map bounds
     x = random.uniform(map_bounds[0], map_bounds[1])
     y = random.uniform(map_bounds[2], map_bounds[3])
     theta = random.uniform(0, 2 * math.pi)
@@ -172,27 +160,21 @@ def sample_informed_state(start: State, goal: State, c_best: float,
         y = random.uniform(map_bounds[2], map_bounds[3])
         return State(x, y, random.uniform(0, 2 * math.pi))
 
-    # Ellipse semi-axes
     a = c_best / 2.0
     b = math.sqrt(max(c_best ** 2 - c_min ** 2, 0.0)) / 2.0
 
-    # Rotation matrix aligning x-axis with start→goal
     dx = (goal.x - start.x) / c_min
     dy = (goal.y - start.y) / c_min
     C = np.array([[dx, -dy],
                   [dy,  dx]])
 
-    # Center of ellipse
     cx = (start.x + goal.x) / 2.0
     cy = (start.y + goal.y) / 2.0
 
-    # Sample uniformly from unit disk, then transform to ellipse
     for _ in range(100):  # retry if sample lands outside map
         angle = random.uniform(0, 2 * math.pi)
         r = math.sqrt(random.uniform(0, 1))  # uniform over disk area
         x_ball = np.array([r * math.cos(angle), r * math.sin(angle)])
-
-        # Scale to ellipse, then rotate and translate
         x_rand = C @ np.array([a * x_ball[0], b * x_ball[1]]) + np.array([cx, cy])
 
         x, y = x_rand[0], x_rand[1]
@@ -204,10 +186,6 @@ def sample_informed_state(start: State, goal: State, c_best: float,
     y = random.uniform(map_bounds[2], map_bounds[3])
     return State(x, y, random.uniform(0, 2 * math.pi))
 
-
-# ============================================================================
-# TODO 3: NEAREST NEIGHBOR SEARCH
-# ============================================================================
 
 def nearest_node(tree: RRTTree, config: State) -> TreeNode:
     """
@@ -223,10 +201,6 @@ def nearest_node(tree: RRTTree, config: State) -> TreeNode:
     return tree.get_nearest_node(config)
 
 
-# ============================================================================
-# TODO 4: STEERING / LOCAL EDGE INTERPOLATION
-# ============================================================================
-
 def steer(start: State, target: State, step_size: float, dynamics_model):
     """
     Steer from start toward target, moving at most step_size distance.
@@ -241,21 +215,15 @@ def steer(start: State, target: State, step_size: float, dynamics_model):
     Returns:
         New state after steering, or None if steering fails
     """
-    # TODO: Implement steering logic
-    # For now, use dynamics model's trajectory method
     if dynamics_model is None:
         return None
-    
-    # STEP 1: compute control
-    v, omega = dynamics_model.robot_controller(start, target)
 
-    # STEP 2: simulate trajectory
-    trajectory = dynamics_model.trajectory(start, v, omega,num_substeps=50)
+    v, omega = dynamics_model.robot_controller(start, target)
+    trajectory = dynamics_model.trajectory(start, v, omega, num_substeps=50)
 
     if len(trajectory) == 0:
         return None
-    
-    # Proper truncation (distance-based)
+
     truncated = []
     total_dist = 0.0
 
@@ -276,15 +244,13 @@ def steer(start: State, target: State, step_size: float, dynamics_model):
 
     return np.array(truncated)
 
+
 def steer_full(start: State, target: State, dynamics_model):
     v, omega = dynamics_model.robot_controller(start, target)
     trajectory = dynamics_model.trajectory(start, v, omega)
 
-    return trajectory  # NO truncation
+    return trajectory
 
-# ============================================================================
-# TODO 5: COLLISION CHECKING
-# ============================================================================
 
 def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
     """
@@ -301,8 +267,6 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
     Returns:
         True if path is collision-free, False otherwise
     """
-    # TODO: Implement collision checking
-
     if trajectory is None or len(trajectory) == 0:
         return False
 
@@ -311,26 +275,19 @@ def is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
 
     for i, point in enumerate(trajectory):
         x, y, _ = point
-
         t = t_start + i * dt
 
-        # 1. Static obstacles check
         for obs in dynamics_model.static_obstacles:
             if obs.collides_with_point(x, y, radius):
                 return False
-        
-        # 2. Dynamic obstacles check
+
         for obs in dynamics_model.dynamic_obstacles:
             obs_t = obs.get_position_at_time(t, dynamics_model.grid)
             if obs_t.collides_with_point(x, y, radius):
                 return False
-        
+
     return True
 
-
-# ============================================================================
-# TODO 6: EDGE COST COMPUTATION
-# ============================================================================
 
 def edge_cost(s1: State, s2: State, dynamics_model=None) -> float:
     """
@@ -344,14 +301,8 @@ def edge_cost(s1: State, s2: State, dynamics_model=None) -> float:
     Returns:
         Cost value
     """
-    # TODO: Implement cost computation
-    # For now, use Euclidean distance
     return State.state_distance(s1, s2)
 
-
-# ============================================================================
-#  REWIRING (RRT*)
-# ============================================================================
 
 def rewire_neighbors(tree: RRTTree, new_node: TreeNode, radius: float, dynamics_model=None):
     """
@@ -367,34 +318,23 @@ def rewire_neighbors(tree: RRTTree, new_node: TreeNode, radius: float, dynamics_
     neighbors = tree.get_neighbors_in_radius(new_node.state, radius)
 
     for neighbor in neighbors:
-        # Skip the new node itself
         if neighbor == new_node:
             continue
 
-        # Calculate cost if we rewire through new_node
-        edge_cost_value = edge_cost(new_node.state, neighbor.state, dynamics_model)
-        new_path_cost = new_node.cost + edge_cost_value
+        new_path_cost = new_node.cost + edge_cost(new_node.state, neighbor.state, dynamics_model)
 
-        # Only consider rewiring if path is cheaper
         if new_path_cost < neighbor.cost:
-            # Check if path from new_node to neighbor is collision-free
             trajectory = steer_full(new_node.state, neighbor.state, dynamics_model)
             if is_collision_free_trajectory(trajectory, dynamics_model):
-                # Rewire: update parent and cost
                 neighbor.parent.children.remove(neighbor)
                 new_node.children.append(neighbor)
                 neighbor.parent = new_node
                 neighbor.cost = new_path_cost
-
-                # Propagate cost changes to all descendants
                 propagate_cost(neighbor)
 
 
 def propagate_cost(node: TreeNode):
-    """
-    Recursively update costs of all descendants after a rewire.
-    Must be called after changing node.cost so children inherit the delta.
-    """
+    """Recursively update costs of all descendants after a rewire."""
     for child in node.children:
         child.cost = node.cost + edge_cost(node.state, child.state)
         propagate_cost(child)
@@ -429,7 +369,6 @@ def detach_branch(tree: RRTTree, detach_state: State):
         detach_node.parent.children.remove(detach_node)
     detach_node.parent = None
 
-    # Collect the entire detached subtree (DFS)
     to_remove = []
     stack = [detach_node]
     while stack:
@@ -437,15 +376,10 @@ def detach_branch(tree: RRTTree, detach_state: State):
         to_remove.append(n)
         stack.extend(n.children)
 
-    # Remove from the flat node list and invalidate the spatial index
     remove_ids = {id(n) for n in to_remove}
     tree.nodes = [n for n in tree.nodes if id(n) not in remove_ids]
     tree._kdtree_dirty = True
 
-
-# ============================================================================
-#  GOAL DETECTION & TERMINATION
-# ============================================================================
 
 def is_goal_reached(node_state: State, goal: State, threshold: float = GOAL_SUCCESS_THRESH) -> bool:
     """
@@ -461,10 +395,6 @@ def is_goal_reached(node_state: State, goal: State, threshold: float = GOAL_SUCC
     """
     return State.state_distance(node_state, goal) < threshold
 
-
-# ============================================================================
-# PATH EXTRACTION & RECONSTRUCTION
-# ============================================================================
 
 def extract_path(goal_node: TreeNode) -> List[State]:
     """
@@ -486,9 +416,6 @@ def extract_path(goal_node: TreeNode) -> List[State]:
     path.reverse()
     return path
 
-# ============================================================================
-# METRICS HELPER
-# ============================================================================
 
 def _path_length(path) -> float:
     """Return total Euclidean distance along a list of States (x, y only)."""
@@ -499,10 +426,6 @@ def _path_length(path) -> float:
         for i in range(len(path) - 1)
     )
 
-
-# ============================================================================
-# MAIN RRT PLANNING LOOP
-# ============================================================================
 
 def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERATION, max_time=MAX_RRT_TIME, step_size=STEP_SIZE, goal_threshold=GOAL_SUCCESS_THRESH, p_goal_bias=GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL, metrics_out: dict = None):
     """
@@ -526,42 +449,27 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERA
     start_time = time.time()
     iterations = 0
     tree = RRTTree(start)
-    
-    # Extract map info
     rows, cols = map_info.dimensions
     map_bounds = (0, cols, 0, rows)
 
     while iterations < max_iterations:
-        # Check time budget
         if time.time() - start_time > max_time:
             break
-        
-        # 1. Sample random config
+
         q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
-        
-        # 2. Find nearest node
         q_nearest_node = nearest_node(tree, q_rand)
-        
-        # 3. Steer toward sample
-        # trajectory = steer(q_nearest_node.state, q_rand, dynamics_model)
         trajectory = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
-        
+
         if trajectory is None:
             iterations += 1
             continue
-        
-        # 4. Collision check
+
         if is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
-
-            # 5. Extract last node of the trajectory as a State
             x, y, theta = trajectory[-1]
-            q_new = State(x, y, theta)            
-
-            # 6. Add to RRT tree
+            q_new = State(x, y, theta)
             new_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
             new_node = tree.add_node(q_new, parent=q_nearest_node, cost=new_cost)
 
-            # 7. Check if reached point is at goal point
             if is_goal_reached(q_new, goal, goal_threshold):
                 path = extract_path(new_node)
                 planning_time = time.time() - start_time
@@ -587,9 +495,7 @@ def plan_rrt(start, goal, map_info, dynamics_model, max_iterations=MAX_RRT_ITERA
         metrics_out['tree_nodes'] = metrics_out.get('tree_nodes', 0) + tree.size()
     return None, tree
 
-# ============================================================================
-# MAIN RRT* PLANNING LOOP
-# ============================================================================
+
 def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_iterations: int = MAX_RRT_ITERATION, max_time: float = MAX_RRT_TIME, step_size: float = STEP_SIZE, goal_threshold: float = GOAL_SUCCESS_THRESH, p_goal_bias: float = GOAL_SAMPLE_RATE, viz_callback=None, viz_interval: int = RRT_VIZ_INTERVAL, tree = None, metrics_out: dict = None):
 
     start_time = time.time()
@@ -606,75 +512,56 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
     c_best = float('inf')  # best path cost found so far (used for informed sampling)
 
     while iterations < max_iterations:
-        # Time check
         if time.time() - start_time > max_time:
             break
 
-        # Step 1: Sample configuration — use informed ellipse once a solution exists
+        # Use informed ellipse sampling once an initial solution exists
         if goal_reached:
             q_rand = sample_informed_state(start, goal, c_best, map_bounds, p_goal=p_goal_bias)
         else:
             q_rand = sample_random_state(map_bounds, goal=goal, p_goal=p_goal_bias)
 
-        # Step 2: Find nearest node in tree
         q_nearest_node = nearest_node(tree, q_rand)
-
-        # Step 3: Steer from nearest node toward random sample (won't necessarily reach q_rand, just move step_size in that direction)
-        # trajectory = steer(q_nearest_node.state, q_rand, dynamics_model)
         trajectory = steer(q_nearest_node.state, q_rand, step_size, dynamics_model)
 
-        if trajectory is None: # if steering fails (e.g., due to dynamics constraints), skip this iteration
+        if trajectory is None:
             iterations += 1
             continue
 
-        # Step 4: Collision check the new edge (considering static + dynamic obstacles) -> checks along trajectory not just endpoint
         if is_collision_free_trajectory(trajectory, dynamics_model, t_start=0.0):
-
             x, y, theta = trajectory[-1]
-            q_new = State(x, y, theta) # taking the last point in that trajectory as the new node position
+            q_new = State(x, y, theta)
 
-            # Step 5: Find neighbors within radius defined by formula r = gamma * (log(n) / n)^(1/d)
+            # Neighbor radius: r = gamma * (log(n)/n)^(1/d) — shrinks as tree grows
             n = tree.size()
             d = 2
-            gamma = 30.0  # tuning parameter — theoretically gamma_star ≈ 25 for a 20x20 2D map
-
-            radius = gamma * (math.log(n + 1) / (n + 1)) ** (1/d) # radius shrinks as tree grows (explore widely at the start, then refine locally later on)
-            radius = min(radius, step_size)
+            gamma = 30.0  # gamma_star ≈ 25 for a 20x20 2D map
+            radius = min(gamma * (math.log(n + 1) / (n + 1)) ** (1 / d), step_size)
 
             neighbors = tree.get_neighbors_in_radius(q_new, radius)
 
-            # Step 6: Choose best parent (minimum cost) from neighbors (start with nearest node as default parent)
             best_parent = q_nearest_node
             best_cost = q_nearest_node.cost + edge_cost(q_nearest_node.state, q_new, dynamics_model)
 
             for neighbor in neighbors:
-
-                # traj = steer(neighbor.state, q_new, dynamics_model) # try connecting neighbor to new node
-                traj = steer_full(neighbor.state, q_new, dynamics_model)  # no cap: must reach q_new
-                if traj is None: # steering failure check
+                traj = steer_full(neighbor.state, q_new, dynamics_model)
+                if traj is None:
                     continue
-
-                if not is_collision_free_trajectory(traj, dynamics_model, t_start=0.0): # collision check
+                if not is_collision_free_trajectory(traj, dynamics_model, t_start=0.0):
                     continue
-
-                cost = neighbor.cost + edge_cost(neighbor.state, q_new, dynamics_model) # cost of being at neighbor + cost to get to new node
-
+                cost = neighbor.cost + edge_cost(neighbor.state, q_new, dynamics_model)
                 if cost < best_cost:
                     best_parent = neighbor
                     best_cost = cost
 
-            # Step 7: Add new node to tree with best parent and cost
-            new_node = tree.add_node(q_new, parent = best_parent, cost = best_cost)
-
-            # Step 8: Rewire neighbors (optimization step)
+            new_node = tree.add_node(q_new, parent=best_parent, cost=best_cost)
             rewire_neighbors(tree, new_node, radius, dynamics_model)
 
-            # Step 9: Check if goal reached — keep cheapest goal node found
             if is_goal_reached(q_new, goal, goal_threshold):
                 goal_reached = True
                 if goal_node is None or new_node.cost < goal_node.cost:
                     goal_node = new_node
-                    c_best = new_node.cost  # tighten ellipse around better solution
+                    c_best = new_node.cost
 
         if viz_callback is not None and iterations % viz_interval == 0:
             viz_callback({"planner": "RRT*", "tree": tree, "iteration": iterations, "phase": "planning"})
@@ -702,9 +589,6 @@ def plan_rrt_star(start: State, goal: State, map_info, dynamics_model, max_itera
         return None, tree
     
 
-# ============================================================================
-# FUNCTIONS FOR RRT*FND
-# ============================================================================
 def detect_future_collision(path: List[State], current_node: int, dynamics_model, t_current: float = 0.0):
     """
     Check if any future edge in the path from current_node
@@ -718,11 +602,9 @@ def detect_future_collision(path: List[State], current_node: int, dynamics_model
     for i in range(current_node, len(path) - 1):
         traj = steer_full(path[i], path[i+1], dynamics_model = dynamics_model)
 
-        # return True if trajectory is not valid (either steering failure or collision)
         if traj is None:
             return True
 
-        # Each path step corresponds to one obstacle update
         t_start = t_current + (i - current_node) * 0.1
         if not is_collision_free_trajectory(traj, dynamics_model, t_start=t_start):
             return True
@@ -734,8 +616,8 @@ def select_branch(path: List[State], current_index: int):
     - Main branch: nodes still connected to current position (up to current_index)
     - Separate branch: forward portion of path toward goal (from current_index + 1 to end)
     """
-    sigma_main = path[:current_index + 1] # from start to current position including current node 
-    sigma_separate = path[current_index + 1:] # future portion of path toward goal
+    sigma_main = path[:current_index + 1]
+    sigma_separate = path[current_index + 1:]
     
     return sigma_main, sigma_separate
 
@@ -852,10 +734,6 @@ def regrow(current_state: State, goal: State, map_info, dynamics_model):
     return path, new_tree
 
 
-# ============================================================================
-# MAIN RRT*FND PLANNING LOOP
-# ============================================================================
-
 def _write_fnd_metrics(metrics_out, planning_metrics, fnd_total_start,
                        tree, executed_path, repair_count, reconnect_count, regrow_count):
     """Write all FND metrics into metrics_out dict (used at every return point)."""
@@ -898,7 +776,6 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
     fnd_total_start = time.time()
     planning_metrics: dict = {}
 
-    # Step 1: Initial Planning Phase (same as RRT*)
     path, tree = plan_rrt_star(start, goal, map_info, dynamics_model,
                          max_iterations=max_iterations,
                          max_time=max_time,
@@ -922,7 +799,6 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             metrics_out['fnd_regrows'] = 0
         return None
 
-    # Step 2: Initialization
     p_current = start
     current_index = 0
     repair_count = 0
@@ -930,10 +806,8 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
     regrow_count = 0
     executed_path = [start]
 
-    # Step 3: Main Execution Loop
     while not is_goal_reached(p_current, goal, goal_threshold):
 
-        # Step 3.1: Move along the current path σ
         if current_index < len(path) - 1:
             current_index += 1
             p_current = path[current_index]
@@ -955,45 +829,32 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             regrow_count += 1
             continue
 
-        # Step 3.2: Update dynamic obstacles (one update = 0.1 s of obstacle time)
         if not freeze_obstacles:
             update_obstacles(dynamics_model.dynamic_obstacles, map_info.grid)
 
-        # Step 3.3: Collision Detection
-        # t_current is the absolute obstacle-simulation time at p_current.
-        # sigma_separate starts at the NEXT node, so its first edge is at
-        # t_current + 0.1 — used as t_separate_start below.
+        # t_current: obstacle-simulation time at p_current; sigma_separate's first edge
+        # is checked at t_current + 0.1 (one step ahead).
         t_current = current_index * 0.1
         if detect_future_collision(path, current_index, dynamics_model, t_current=t_current):
 
             repair_count += 1
             _fnd_log(current_index, f"collision detected — repair #{repair_count}")
 
-            # Step 3.3.2: SelectBranch — split path at current position
             sigma_main, sigma_separate = select_branch(path, current_index)
 
-            # Prune the separate branch from the tree BEFORE reconnect so it
-            # only searches nodes that are still reachable from the robot.
             if current_index + 1 < len(path):
                 detach_branch(tree, path[current_index + 1])
 
-            # Step 3.3.3: ValidPath — trim colliding edges from sigma_separate.
-            # sigma_separate[0] is reached at the NEXT step → t_current + 0.1.
             t_separate_start = t_current + 0.1
             sigma_separate = valid_path(sigma_separate, dynamics_model, t_current=t_separate_start)
             _fnd_log(current_index, f"valid_path kept {len(sigma_separate)} node(s) of sigma_separate")
 
-            # Step 3.3.4: Try Reconnect
             _fnd_log(current_index, "trying reconnect...")
             final_node, junction_node = reconnect(tree, sigma_separate, dynamics_model, t_current=t_separate_start)
 
             reconnected_to_goal = False
             if final_node is not None:
-                # Build full path: root → … → junction_node → reconnected tail
                 path_to_junction = extract_path(junction_node)
-
-                # Walk from final_node up to junction_node (cycle-guarded above
-                # in reconnect's path reconstruction block).
                 segment_after_junction = []
                 n = final_node
                 max_walk = len(tree.nodes) + len(sigma_separate) + 10
@@ -1012,7 +873,6 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                 full_path = path_to_junction + segment_after_junction
 
                 if is_goal_reached(full_path[-1], goal, goal_threshold):
-                    # Locate p_current in the new path; fall back to closest node
                     best_i, best_d = 0, float('inf')
                     for i, s in enumerate(full_path):
                         d = State.state_distance(s, p_current)
@@ -1060,10 +920,8 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
                     })
                     plt.pause(0.05)
 
-            # Step 3.3.5: Resume movement with the updated path
             continue
 
-        # Step 3.4: Normal execution step — fire viz callback
         if viz_callback is not None:
             viz_callback({
                 "planner": "RRT*-FND", "phase": "executing",
@@ -1072,16 +930,11 @@ def plan_rrt_star_fnd(start: State, goal: State, map_info, dynamics_model,
             })
             plt.pause(FND_EXEC_PAUSE)
 
-    # Step 4: End when goal reached
     if metrics_out is not None:
         _write_fnd_metrics(metrics_out, planning_metrics, fnd_total_start,
                            tree, executed_path, repair_count, reconnect_count, regrow_count)
     return executed_path
 
-
-# ============================================================================
-# MULTI-GOAL ORCHESTRATOR
-# ============================================================================
 
 def plan_multi_goal(
     start: State,
@@ -1157,7 +1010,6 @@ def plan_multi_goal(
             raise ValueError(f"[Multi-Goal] Unknown planner '{planner}'. "
                              "Choose from: 'rrt', 'rrt_star', 'rrt_fnd'.")
 
-        # Accumulate per-segment metrics
         if metrics_out is not None and seg_metrics:
             for key in ('planning_time_s', 'total_time_s', 'iterations',
                         'tree_nodes', 'path_length_m',
@@ -1174,13 +1026,11 @@ def plan_multi_goal(
 
         goals_reached += 1
 
-        # Fire the segment-done callback for rrt/rrt_star so the caller can
-        # animate execution of this segment before planning the next one.
         if segment_done_callback is not None and tree is not None:
             segment_done_callback(segment, tree)
 
         if full_path:
-            full_path += segment[1:]  # skip the shared junction waypoint
+            full_path += segment[1:]  # skip shared junction waypoint
         else:
             full_path = list(segment)
 

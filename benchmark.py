@@ -27,13 +27,6 @@ from dynamics import RobotDynamics, State
 from path_planner import plan_multi_goal
 from utils import update_obstacles
 
-# ---------------------------------------------------------------------------
-# Trial matrix  — all algorithms run all 5 maps
-# Static maps (1-3): no dynamic obstacles, execution trivially safe
-# Dynamic maps (4-5):
-#   rrt / rrt_star: plan with obstacles frozen, then execute live → collision = FAIL
-#   rrt_fnd:        execution is built into the planner (handles moving obstacles)
-# ---------------------------------------------------------------------------
 TRIAL_MATRIX = {
     'rrt':      ['map1', 'map2', 'map3', 'map4', 'map5'],
     'rrt_star': ['map1', 'map2', 'map3', 'map4', 'map5'],
@@ -55,9 +48,6 @@ CSV_COLUMNS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Setup helper (mirrors main.py _setup, but never touches matplotlib)
-# ---------------------------------------------------------------------------
 def _setup(map_name):
     m = get_map(map_name)
     dynamics_model = RobotDynamics()
@@ -75,9 +65,6 @@ def _reset_dynamic_obstacles(map_info):
         obs.reset_dynamic_obstacle()
 
 
-# ---------------------------------------------------------------------------
-# Execution simulation for RRT / RRT* on dynamic maps
-# ---------------------------------------------------------------------------
 def simulate_execution(path, map_info, dynamics_model) -> bool:
     """
     Walk a planned path while advancing dynamic obstacles one step per waypoint.
@@ -97,9 +84,6 @@ def simulate_execution(path, map_info, dynamics_model) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Single trial
-# ---------------------------------------------------------------------------
 def run_trial(algorithm: str, map_name: str, trial_idx: int) -> dict:
     seed = TRIAL_SEEDS[trial_idx - 1]
     random.seed(seed)
@@ -123,16 +107,12 @@ def run_trial(algorithm: str, map_name: str, trial_idx: int) -> dict:
     success = path is not None
     execution_collision = False
 
-    # For RRT / RRT* on dynamic maps: execute the planned path with live obstacles.
-    # Planning is always done with frozen obstacles (no update_obstacles calls inside
-    # plan_rrt / plan_rrt_star). Execution here reveals whether the static plan
-    # survives a dynamic environment.
+    # RRT/RRT* plan with frozen obstacles; simulate live execution to check for collisions.
     if success and algorithm in ('rrt', 'rrt_star') and m.dynamic_obstacles:
         if not simulate_execution(path, m, dynamics_model):
             execution_collision = True
             success = False
 
-    # fnd_overhead_s: extra time FND spent on execution + repairs beyond initial planning
     planning_time_s = metrics.get('planning_time_s', 0.0)
     total_time_s = metrics.get('total_time_s', wall_total)
     fnd_overhead_s = total_time_s - planning_time_s if algorithm == 'rrt_fnd' else 0.0
@@ -159,9 +139,6 @@ def run_trial(algorithm: str, map_name: str, trial_idx: int) -> dict:
     return row
 
 
-# ---------------------------------------------------------------------------
-# Summary table
-# ---------------------------------------------------------------------------
 def _mean_std(values):
     # Filter out non-numeric entries (e.g. '' from error rows)
     numeric = []
@@ -181,7 +158,6 @@ def _mean_std(values):
 
 
 def print_summary(rows):
-    # Group by (algorithm, map)
     groups: dict = {}
     for r in rows:
         key = (r['algorithm'], r['map'])
@@ -220,9 +196,6 @@ def print_summary(rows):
     print('=' * len(header) + '\n')
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description='AER1516 benchmark runner')
     parser.add_argument('--runs', type=int, default=N_RUNS,
