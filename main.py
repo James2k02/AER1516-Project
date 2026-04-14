@@ -47,6 +47,9 @@ def _make_segment_done_callback(ax, planner_label, m, dynamics_model, start, goa
     def on_segment_done(segment, tree):
         plt.ion()
         for i, node in enumerate(segment):
+            # Advance dynamic obstacles each execution step so collisions are visible
+            for obs in dynamics_model.dynamic_obstacles:
+                obs.update(m.grid)
             render_planning_step(ax, {
                 "planner": planner_label, "phase": "executing",
                 "tree": tree, "current_path": segment,
